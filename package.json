@@ -1,0 +1,36 @@
+{
+  "name": "pseudoeditor.dev",
+  "version": "0.1.9",
+  "private": true,
+  "description": "PseudoEditor website and browser Pseudocode Compiler app.",
+  "author": "Alex",
+  "packageManager": "pnpm@10.29.3",
+  "scripts": {
+    "dev": "pnpm --filter @pseudoeditor/web dev",
+    "dev:web": "pnpm --filter @pseudoeditor/web dev",
+    "build": "pnpm --filter @pseudoeditor/web build",
+    "test": "pnpm -r --if-present run test",
+    "test:compiler": "pnpm --filter @igcse/compiler test",
+    "test:web": "pnpm --filter @pseudoeditor/web test",
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "lint": "pnpm -r --if-present run lint"
+  },
+  "devDependencies": {
+    "convex": "^1.36.1",
+    "next": "16.1.6"
+  },
+  "pnpm": {
+    "overrides": {
+      "minimatch@^3.0.0": "3.1.4",
+      "minimatch@^9.0.0": "9.0.7",
+      "minimatch@^10.0.0": "10.2.3",
+      "rollup": "^4.59.0"
+    },
+    "onlyBuiltDependencies": [
+      "dtrace-provider",
+      "esbuild",
+      "sharp",
+      "unrs-resolver"
+    ]
+  }
+}

@@ -1,0 +1,625 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/inter-latin-ext.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  unicode-range:
+    U+0100-02BA,
+    U+02BD-02C5,
+    U+02C7-02CC,
+    U+02CE-02D7,
+    U+02DD-02FF,
+    U+0304,
+    U+0308,
+    U+0329,
+    U+1D00-1DBF,
+    U+1E00-1E9F,
+    U+1EF2-1EFF,
+    U+2020,
+    U+20A0-20AB,
+    U+20AD-20C0,
+    U+2113,
+    U+2C60-2C7F,
+    U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Inter";
+  src: url("/fonts/inter-latin.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  unicode-range:
+    U+0000-00FF,
+    U+0131,
+    U+0152-0153,
+    U+02BB-02BC,
+    U+02C6,
+    U+02DA,
+    U+02DC,
+    U+0304,
+    U+0308,
+    U+0329,
+    U+2000-206F,
+    U+20AC,
+    U+2122,
+    U+2191,
+    U+2193,
+    U+2212,
+    U+2215,
+    U+FEFF,
+    U+FFFD;
+}
+
+@font-face {
+  font-family: "Fira Code";
+  src: url("/fonts/fira-code-latin-ext.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  unicode-range:
+    U+0100-02BA,
+    U+02BD-02C5,
+    U+02C7-02CC,
+    U+02CE-02D7,
+    U+02DD-02FF,
+    U+0304,
+    U+0308,
+    U+0329,
+    U+1D00-1DBF,
+    U+1E00-1E9F,
+    U+1EF2-1EFF,
+    U+2020,
+    U+20A0-20AB,
+    U+20AD-20C0,
+    U+2113,
+    U+2C60-2C7F,
+    U+A720-A7FF;
+}
+
+@font-face {
+  font-family: "Fira Code";
+  src: url("/fonts/fira-code-symbols.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  unicode-range:
+    U+2000-2001,
+    U+2004-2008,
+    U+200A,
+    U+23B8-23BD,
+    U+2500-259F;
+}
+
+@font-face {
+  font-family: "Fira Code";
+  src: url("/fonts/fira-code-latin.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: swap;
+  unicode-range:
+    U+0000-00FF,
+    U+0131,
+    U+0152-0153,
+    U+02BB-02BC,
+    U+02C6,
+    U+02DA,
+    U+02DC,
+    U+0304,
+    U+0308,
+    U+0329,
+    U+2000-206F,
+    U+20AC,
+    U+2122,
+    U+2191,
+    U+2193,
+    U+2212,
+    U+2215,
+    U+FEFF,
+    U+FFFD;
+}
+
+:root,
+:root[data-theme="dark"] {
+  --font-sans: "Inter";
+  --font-mono: "Fira Code";
+  --bg: #1C1C1E;
+  --sidebar: #262628;
+  --titlebar: #323234;
+  --surface: #2C2C2E;
+  --surface2: #3A3A3C;
+  --surface3: #48484A;
+  --separator: #38383A;
+  --text: #FFFFFF;
+  --text2: #98989D;
+  --text3: #636366;
+  --accent: #0A84FF;
+  --green: #30D158;
+  --red: #FF453A;
+  --orange: #FF9F0A;
+  --yellow: #FFD60A;
+  --selected: rgba(10, 132, 255, 0.19);
+  --hover: rgba(255, 255, 255, 0.04);
+  --line-num: #48484A;
+  --traffic-red: #FF5F57;
+  --traffic-yellow: #FEBC2E;
+  --traffic-green: #28C840;
+  --code-keyword: #FC5FA3;
+  --code-variable: #67B7A4;
+  --code-type: #5DD8FF;
+  --code-string: #FC6A5D;
+  --code-number: #D0BF69;
+  --code-operator: #E5E5EA;
+  --code-comment: #6C7986;
+  --code-func: #A167E6;
+  --code-text: #E5E5EA;
+
+  /* ── Unified Design Tokens ─────────────────────────────────── */
+
+  /* Border Radius */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 14px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius-3xl: 24px;
+  --radius-full: 999px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.14), 0 8px 16px rgba(0, 0, 0, 0.10);
+  --shadow-lg: 0 12px 24px rgba(0, 0, 0, 0.18), 0 18px 36px rgba(0, 0, 0, 0.14);
+  --shadow-xl: 0 18px 60px rgba(0, 0, 0, 0.28), 0 24px 80px rgba(0, 0, 0, 0.22);
+  --shadow-button: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --shadow-context: 0 14px 28px rgba(0, 0, 0, 0.28);
+  --shadow-dropdown: 0 18px 60px rgba(0, 0, 0, 0.28);
+  --shadow-modal: 0 24px 80px rgba(0, 0, 0, 0.35);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.08), 0 12px 24px rgba(0, 0, 0, 0.06);
+  --shadow-card-hover: 0 2px 4px rgba(0, 0, 0, 0.14), 0 8px 16px rgba(0, 0, 0, 0.10), 0 24px 48px rgba(0, 0, 0, 0.08);
+
+  /* Z-Index Layers */
+  --z-base: 0;
+  --z-dropdown: 50;
+  --z-sticky: 60;
+  --z-overlay: 65;
+  --z-modal: 70;
+  --z-tooltip: 80;
+  --z-toast: 90;
+
+  /* Overlays */
+  --overlay: rgba(0, 0, 0, 0.55);
+  --overlay-strong: rgba(0, 0, 0, 0.6);
+
+  /* Semantic colors */
+  --danger-hover: rgba(255, 69, 58, 0.12);
+  --surface-ghost: rgba(255, 255, 255, 0.02);
+
+  /* Flowchart colors */
+  --flowchart-terminator: var(--green);
+  --flowchart-process: #8B5CF6;
+  --flowchart-decision: var(--orange);
+  --flowchart-io: var(--accent);
+  --flowchart-subroutine: var(--accent);
+}
+
+:root[data-theme="light"] {
+  --bg: #FFFFFF;
+  --sidebar: #FAFAFA;
+  --titlebar: #FFFFFF;
+  --surface: #FAFAFA;
+  --surface2: #F5F5F5;
+  --surface3: #EDEDED;
+  --separator: #E5E5E5;
+  --text: #111111;
+  --text2: #4B5563;
+  --text3: #9CA3AF;
+  --accent: #0B6E4F;
+  --green: #0B8F55;
+  --red: #C03B2B;
+  --orange: #B45309;
+  --yellow: #CA8A04;
+  --selected: rgba(11, 110, 79, 0.14);
+  --hover: rgba(17, 17, 17, 0.04);
+  --line-num: #CFCFCF;
+  --traffic-red: #D95C52;
+  --traffic-yellow: #D6A33F;
+  --traffic-green: #55A66F;
+  --code-keyword: #9B2D63;
+  --code-variable: #2D7A6D;
+  --code-type: #0F7A94;
+  --code-string: #B45438;
+  --code-number: #8D6A12;
+  --code-operator: #111111;
+  --code-comment: #9CA3AF;
+  --code-func: #7856B3;
+  --code-text: #111111;
+
+  /* Light theme overrides for semantic tokens */
+  --shadow-button: 0 0 0 1px rgba(0, 0, 0, 0.06);
+  --overlay: rgba(0, 0, 0, 0.55);
+  --overlay-strong: rgba(0, 0, 0, 0.65);
+  --danger-hover: rgba(192, 59, 43, 0.12);
+  --surface-ghost: rgba(0, 0, 0, 0.02);
+
+  /* Flowchart colors */
+  --flowchart-terminator: var(--green);
+  --flowchart-process: #7C3AED;
+  --flowchart-decision: var(--orange);
+  --flowchart-io: var(--accent);
+  --flowchart-subroutine: var(--accent);
+}
+
+html {
+  height: 100%;
+  background: var(--bg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  height: 100%;
+  min-height: 100vh;
+  min-height: 100svh;
+  min-height: 100dvh;
+  color: var(--text);
+  background: var(--bg);
+  font-family: var(--font-sans), "Inter", system-ui, sans-serif;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  color: inherit;
+  touch-action: manipulation;
+}
+
+button {
+  cursor: pointer;
+}
+
+.app-drag-region {
+  -webkit-app-region: drag;
+}
+
+.app-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+.window-dot {
+  display: inline-flex;
+  height: 12px;
+  width: 12px;
+  border-radius: var(--radius-full);
+}
+
+::selection {
+  background: rgba(10, 132, 255, 0.35);
+}
+
+pre,
+textarea,
+code {
+  font-family: var(--font-mono), "Fira Code", monospace;
+}
+
+.monaco-editor .iPadShowKeyboard {
+  right: 12px !important;
+  bottom: 12px !important;
+  left: auto !important;
+  top: auto !important;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--separator);
+  background: color-mix(in srgb, var(--surface2) 88%, transparent);
+  box-shadow: var(--shadow-context);
+  backdrop-filter: blur(12px);
+}
+
+/* ── React Flow Node Styling ─────────────────────────────────── */
+
+/* Remove default square background from all nodes */
+.react-flow__node {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Remove default selected state styling */
+.react-flow__node.selected {
+  box-shadow: none !important;
+}
+
+.flowchart-canvas .react-flow__panel.react-flow__controls {
+  left: 16px !important;
+  bottom: 16px !important;
+  overflow: hidden !important;
+  border: 1px solid color-mix(in srgb, var(--separator) 80%, transparent) !important;
+  border-radius: var(--radius-lg) !important;
+  background: color-mix(in srgb, var(--surface) 94%, transparent) !important;
+  box-shadow: var(--shadow-context) !important;
+  backdrop-filter: blur(12px) !important;
+}
+
+.flowchart-canvas .react-flow__controls-button {
+  width: 34px !important;
+  height: 34px !important;
+  border: 0 !important;
+  border-bottom: 1px solid color-mix(in srgb, var(--separator) 80%, transparent) !important;
+  background: transparent !important;
+  color: var(--text2) !important;
+  transition:
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.flowchart-canvas .react-flow__controls-button:hover {
+  background: color-mix(in srgb, var(--hover) 100%, transparent) !important;
+  color: var(--text) !important;
+}
+
+.flowchart-canvas .react-flow__controls-button:last-child {
+  border-bottom: 0 !important;
+}
+
+.flowchart-canvas .react-flow__controls-button svg {
+  max-width: 16px !important;
+  max-height: 16px !important;
+  fill: currentColor !important;
+  stroke: currentColor !important;
+}
+
+.flowchart-canvas .react-flow__minimap {
+  right: 16px !important;
+  bottom: 16px !important;
+  width: 164px !important;
+  height: 104px !important;
+  overflow: hidden !important;
+  border: 1px solid color-mix(in srgb, var(--separator) 80%, transparent) !important;
+  border-radius: var(--radius-xl) !important;
+  background: color-mix(in srgb, var(--surface) 96%, transparent) !important;
+  box-shadow: var(--shadow-lg) !important;
+  backdrop-filter: blur(12px) !important;
+}
+
+.flowchart-canvas .react-flow__minimap svg {
+  background: transparent !important;
+}
+
+.flowchart-canvas .react-flow__attribution {
+  right: 24px !important;
+  bottom: 132px !important;
+  border-radius: var(--radius-full) !important;
+  background: color-mix(in srgb, var(--surface) 92%, transparent) !important;
+  color: var(--text3) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+.flowchart-canvas .react-flow__attribution a {
+  color: inherit;
+}
+
+/* ── Manual / Guidelines Design System ────────────────────────── */
+
+.manual-shell {
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -10%, color-mix(in srgb, var(--accent) 8%, transparent), transparent),
+    var(--bg);
+}
+
+.manual-container {
+  --card-bg: color-mix(in srgb, var(--surface) 92%, transparent);
+  --card-border: color-mix(in srgb, var(--separator) 60%, transparent);
+  --card-shadow: var(--shadow-card);
+  --card-shadow-hover: var(--shadow-card-hover);
+  --card-glow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent),
+    0 0 32px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.manual-card {
+  position: relative;
+  border-radius: var(--radius-2xl);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--card-shadow);
+  backdrop-filter: blur(16px) saturate(140%);
+  transition:
+    transform 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 320ms cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 320ms ease;
+  overflow: hidden;
+}
+
+.manual-card:hover {
+  box-shadow: var(--card-shadow-hover);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--card-border));
+}
+
+.manual-card-accent {
+  box-shadow:
+    var(--card-shadow),
+    var(--card-glow);
+}
+
+.manual-card-accent:hover {
+  box-shadow:
+    var(--card-shadow-hover),
+    0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent),
+    0 0 48px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.manual-nav-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.1rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: color-mix(in srgb, var(--surface2) 80%, transparent);
+  border: 1px solid var(--card-border);
+  color: var(--text2);
+  text-decoration: none;
+  transition:
+    background 200ms ease,
+    color 200ms ease,
+    transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 200ms ease;
+  backdrop-filter: blur(8px);
+}
+
+.manual-nav-pill:hover {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface2));
+  color: var(--text);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+}
+
+.manual-nav-pill:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.manual-code-block {
+  border-radius: var(--radius-xl);
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  border: 1px solid var(--card-border);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.06);
+  overflow: hidden;
+}
+
+.manual-code-block pre {
+  padding: 1rem 1.25rem;
+  font-size: 0.78rem;
+  line-height: 1.7;
+  color: var(--code-text);
+}
+
+.manual-table-wrap {
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--card-border);
+  overflow: hidden;
+  box-shadow: var(--card-shadow);
+}
+
+.manual-table-wrap table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.manual-table-wrap th {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--accent);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.7rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.manual-table-wrap td {
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid var(--card-border);
+  color: var(--text2);
+}
+
+.manual-table-wrap tr:last-child td {
+  border-bottom: none;
+}
+
+.manual-table-wrap tbody tr {
+  transition: background 150ms ease;
+}
+
+.manual-table-wrap tbody tr:hover {
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+
+.manual-section-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.manual-section-title::before {
+  content: "";
+  display: block;
+  width: 4px;
+  height: 1.1em;
+  border-radius: 999px;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+
+.manual-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.manual-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--surface2) 80%, transparent);
+  border: 1px solid var(--card-border);
+  color: var(--text2);
+  text-decoration: none;
+  transition: all 200ms ease;
+  backdrop-filter: blur(8px);
+}
+
+.manual-back-btn:hover {
+  background: color-mix(in srgb, var(--accent) 15%, var(--surface2));
+  color: var(--text);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+/* Entrance animation */
+@keyframes manualCardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.manual-card-enter {
+  animation: manualCardEnter 500ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
