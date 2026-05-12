@@ -1,0 +1,14 @@
+import { Footer } from "@/app/components/Footer";
+
+export default function PublicLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <div className="public-motion-shell">
+      {children}
+      <Footer />
+    </div>
+  );
+}

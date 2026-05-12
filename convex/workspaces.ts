@@ -1,8 +1,9 @@
 import { mutationGeneric, queryGeneric } from "convex/server";
 import { v } from "convex/values";
+import { workspaceSyncSecret } from "./workspaceSyncSecret";
 
 function requireServerSecret(serverSecret: string) {
-  const expected = process.env.WORKSPACE_SYNC_SECRET;
+  const expected = process.env.WORKSPACE_SYNC_SECRET ?? workspaceSyncSecret;
   if (!expected || serverSecret !== expected) {
     throw new Error("Unauthorized workspace sync request.");
   }

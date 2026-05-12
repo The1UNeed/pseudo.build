@@ -1,8 +1,11 @@
 "use client";
 
+import dynamic from "next/dynamic";
+import Image from "next/image";
 import {
   DragEvent,
   FormEvent,
+  KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
   UIEvent as ReactUIEvent,
   useCallback,
@@ -13,8 +16,10 @@ import {
 } from "react";
 import {
   BookOpen,
+  Check,
   ChevronLeft,
   ChevronUp,
+  CircleAlert,
   Code,
   CloudOff,
   Ellipsis,
@@ -22,8 +27,10 @@ import {
   FilePlus,
   Folder,
   GitBranch,
+  LoaderCircle,
   LogIn,
   PanelLeft,
+  Palette,
   Play,
   Save,
   Settings,
@@ -36,15 +43,13 @@ import {
   type WorkspaceEditorPanelInstance,
 } from "@igcse/workspace";
 import { Breadcrumbs } from "@/app/components/Breadcrumbs";
-import FlowchartEditor from "@/app/components/flowchart/FlowchartEditor";
-import ManualContent from "@/app/manual/ManualContent";
-import { MonacoPseudocodeEditor } from "@/app/components/MonacoPseudocodeEditor";
 import { WorkspaceSidebar } from "@/app/components/WorkspaceSidebar";
 import { useWorkspaceSession } from "@/app/hooks/useWorkspaceSession";
 import {
   Show,
   SignInButton,
   UserButton,
+  isCloudAuthConfigured,
   useAuth,
 } from "@/lib/auth-components";
 import { isAppleTouchDevice } from "@/lib/appleTouch";
@@ -77,28 +82,71 @@ const DEFAULT_SIDEBAR_WIDTH = 260;
 const MIN_SIDEBAR_WIDTH = 180;
 const MAX_SIDEBAR_WIDTH = 480;
 const DEFAULT_TERMINAL_HEIGHT = 160;
-const MIN_TERMINAL_HEIGHT = 60;
+const MIN_TERMINAL_HEIGHT = 96;
+const MAX_TERMINAL_HEIGHT = 460;
 const TOUCH_TABLET_BREAKPOINT = 744;
-const TOUCH_SIDEBAR_WIDTH = 280;
-const TOUCH_OUTPUT_HEIGHT = 140;
+const SIDEBAR_WIDTH_STORAGE_KEY = "pseudocode-compiler-sidebar-width";
+const TERMINAL_HEIGHT_STORAGE_KEY = "pseudocode-compiler-terminal-height";
 const AUTO_SAVE_INTERVAL_STORAGE_KEY = "pseudocode-compiler-autosave-minutes";
 const FLOWCHART_MODE_STORAGE_KEY = "pseudocode-compiler-flowchart-mode-enabled";
 const DEFAULT_AUTO_SAVE_INTERVAL_MINUTES = 5;
 const MIN_AUTO_SAVE_INTERVAL_MINUTES = 1;
 const MAX_AUTO_SAVE_INTERVAL_MINUTES = 60;
+const MANUAL_SAVE_STATUS_TIMEOUT_MS = 2200;
+const PSEUDO_EXTENSION = ".pseudo";
 
 type TouchTab = "editor" | "files" | "output" | "settings";
+type ManualSaveStatus = "idle" | "saving" | "saved" | "error";
+
+function LazyPanelFallback({ label }: { label: string }) {
+  return (
+    <div className="flex h-full min-h-[240px] items-center justify-center bg-[var(--bg)] text-sm font-medium text-[var(--text2)]">
+      <LoaderCircle className="mr-2 animate-spin" size={16} />
+      {label}
+    </div>
+  );
+}
+
+const MonacoPseudocodeEditor = dynamic(
+  () =>
+    import("@/app/components/MonacoPseudocodeEditor").then(
+      (module) => module.MonacoPseudocodeEditor,
+    ),
+  {
+    ssr: false,
+    loading: () => <LazyPanelFallback label="Loading editor" />,
+  },
+);
+
+const FlowchartEditor = dynamic(() => import("@/app/components/flowchart/FlowchartEditor"), {
+  ssr: false,
+  loading: () => <LazyPanelFallback label="Loading flowchart" />,
+});
 
 /* ── dialog state types ── */
 
 interface RenameDialogState {
   nodeId: string;
   currentName: string;
+  isDocument: boolean;
 }
 
 interface DeleteDialogState {
   nodeIds: string[];
   message: string;
+}
+
+function getDocumentEditableName(name: string): string {
+  return name.endsWith(PSEUDO_EXTENSION) ? name.slice(0, -PSEUDO_EXTENSION.length) : name;
+}
+
+function normalizeDocumentEditableName(name: string): string {
+  return getDocumentEditableName(name.trim());
+}
+
+function getSubmittedRenameValue(renameDialog: RenameDialogState, value: string): string {
+  const trimmed = value.trim();
+  return renameDialog.isDocument ? `${normalizeDocumentEditableName(trimmed)}${PSEUDO_EXTENSION}` : trimmed;
 }
 
 const THEME_OPTIONS: Array<{ value: ThemeMode; label: string; description: string }> = [
@@ -167,10 +215,43 @@ function saveFlowchartModeEnabled(enabled: boolean): void {
   window.localStorage.setItem(FLOWCHART_MODE_STORAGE_KEY, String(enabled));
 }
 
+function clampNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function loadStoredNumber(key: string, fallback: number, min: number, max: number): number {
+  if (typeof window === "undefined") {
+    return fallback;
+  }
+
+  const stored = window.localStorage.getItem(key);
+  if (!stored) {
+    return fallback;
+  }
+
+  return clampNumber(Number(stored), min, max);
+}
+
+function saveStoredNumber(key: string, value: number): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(key, String(Math.round(value)));
+}
+
+function getMaxTerminalHeight(viewportHeight: number): number {
+  return Math.max(MIN_TERMINAL_HEIGHT, Math.min(MAX_TERMINAL_HEIGHT, viewportHeight - 220));
+}
+
 /* ── component ── */
 
 export default function HomePage() {
-  const { isLoaded: authLoaded, isSignedIn } = useAuth();
+  const { getToken, isLoaded: authLoaded, isSignedIn } = useAuth();
   const authLoading = !authLoaded;
   const [appPlatform] = useState(() => getClientAppPlatform());
   const cloudSavingRequired = platformUsesCloudSaving(appPlatform);
@@ -178,6 +259,15 @@ export default function HomePage() {
     platform: appPlatform,
     signedIn: Boolean(isSignedIn),
   });
+  const getCloudAuthToken = useCallback(async () => {
+    if (typeof getToken !== "function") {
+      return null;
+    }
+
+    return await getToken({ skipCache: true });
+  }, [getToken]);
+  const workspaceAuthTokenProvider =
+    workspacePersistenceMode === "cloud" ? getCloudAuthToken : undefined;
   const canSaveWorkspace = workspacePersistenceMode !== "memory";
   const isDesktopShell = appPlatform === "desktop";
   const [autoSaveIntervalMinutes, setAutoSaveIntervalMinutes] = useState(
@@ -195,13 +285,13 @@ export default function HomePage() {
     saveError,
     hasPendingSave,
     isSaving,
-    lastSavedAt,
     appNotice,
     dismissNotice,
     setPendingInputText,
     submitPendingInput,
     cancelPendingInput,
     runNow,
+    preloadRunRuntime,
     saveWorkspaceNow,
     clearTerminal,
     selectDocument,
@@ -218,6 +308,7 @@ export default function HomePage() {
     closeEditorDocumentTab,
   } = useWorkspaceSession(DEFAULT_SOURCE, {
     autoSaveDelayMs: autoSaveIntervalMinutes * 60 * 1000,
+    getCloudAuthToken: workspaceAuthTokenProvider,
     persistenceMode: workspacePersistenceMode,
     cloudSyncLoading: cloudSavingRequired ? authLoading : false,
   });
@@ -227,8 +318,22 @@ export default function HomePage() {
   const [renameDialog, setRenameDialog] = useState<RenameDialogState | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null);
-  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
-  const [terminalHeight, setTerminalHeight] = useState(DEFAULT_TERMINAL_HEIGHT);
+  const [sidebarWidth, setSidebarWidth] = useState(() =>
+    loadStoredNumber(
+      SIDEBAR_WIDTH_STORAGE_KEY,
+      DEFAULT_SIDEBAR_WIDTH,
+      MIN_SIDEBAR_WIDTH,
+      MAX_SIDEBAR_WIDTH,
+    ),
+  );
+  const [terminalHeight, setTerminalHeight] = useState(() =>
+    loadStoredNumber(
+      TERMINAL_HEIGHT_STORAGE_KEY,
+      DEFAULT_TERMINAL_HEIGHT,
+      MIN_TERMINAL_HEIGHT,
+      MAX_TERMINAL_HEIGHT,
+    ),
+  );
   const [showTerminal, setShowTerminal] = useState(true);
   const [touchTab, setTouchTab] = useState<TouchTab>("editor");
   const [touchSidebarVisible, setTouchSidebarVisible] = useState(true);
@@ -236,29 +341,54 @@ export default function HomePage() {
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [showSignInPrompt, setShowSignInPrompt] = useState(false);
   const [showFlowchart, setShowFlowchart] = useState(false);
-  const [showManual, setShowManual] = useState(false);
   const [showCreateFileDialog, setShowCreateFileDialog] = useState(false);
-  const [createFileName, setCreateFileName] = useState("main.pseudo");
+  const [createFileName, setCreateFileName] = useState("main");
+  const [createFileParentId, setCreateFileParentId] = useState<string | undefined>(undefined);
   const [showFlowchartPrompt, setShowFlowchartPrompt] = useState(false);
   const [flowchartFileName, setFlowchartFileName] = useState("");
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => loadThemeMode());
   const [flowchartModeEnabled, setFlowchartModeEnabled] = useState(() =>
     loadFlowchartModeEnabled(),
   );
+  const [manualSaveStatus, setManualSaveStatus] = useState<ManualSaveStatus>("idle");
+  const manualSaveStatusTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!showManual && !showFlowchartPrompt && !showCreateFileDialog) return;
+    if (!showFlowchartPrompt && !showCreateFileDialog) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         if (showCreateFileDialog) setShowCreateFileDialog(false);
         if (showFlowchartPrompt) setShowFlowchartPrompt(false);
-        if (showManual) setShowManual(false);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showManual, showFlowchartPrompt, showCreateFileDialog]);
+  }, [showFlowchartPrompt, showCreateFileDialog]);
   const [systemTheme, setSystemTheme] = useState<"dark" | "light">(() => getSystemTheme());
+
+  const clearManualSaveStatusTimer = useCallback(() => {
+    if (manualSaveStatusTimerRef.current !== null) {
+      window.clearTimeout(manualSaveStatusTimerRef.current);
+      manualSaveStatusTimerRef.current = null;
+    }
+  }, []);
+
+  const showTemporaryManualSaveStatus = useCallback(
+    (status: Exclude<ManualSaveStatus, "idle" | "saving">) => {
+      clearManualSaveStatusTimer();
+      setManualSaveStatus(status);
+      manualSaveStatusTimerRef.current = window.setTimeout(() => {
+        setManualSaveStatus("idle");
+        manualSaveStatusTimerRef.current = null;
+      }, MANUAL_SAVE_STATUS_TIMEOUT_MS);
+    },
+    [clearManualSaveStatusTimer],
+  );
+
+  useEffect(() => {
+    return () => clearManualSaveStatusTimer();
+  }, [clearManualSaveStatusTimer]);
+
   const [viewportSize, setViewportSize] = useState(() => ({
     width: typeof window === "undefined" ? 1280 : window.innerWidth,
     height: typeof window === "undefined" ? 800 : window.innerHeight,
@@ -266,12 +396,19 @@ export default function HomePage() {
   const [isAppleTouchUi] = useState(() =>
     isAppleTouchDevice(typeof navigator === "undefined" ? undefined : navigator),
   );
+  const maxTerminalHeight = getMaxTerminalHeight(viewportSize.height);
 
   const renameInputRef = useRef<HTMLInputElement | null>(null);
   const createFileInputRef = useRef<HTMLInputElement | null>(null);
   const desktopTerminalScrollRef = useRef<HTMLDivElement | null>(null);
   const touchOutputScrollRef = useRef<HTMLDivElement | null>(null);
   const shouldAutoScrollOutputRef = useRef(true);
+  const sidebarWidthRef = useRef(sidebarWidth);
+  const terminalHeightRef = useRef(terminalHeight);
+  const sidebarResizeFrameRef = useRef<number | null>(null);
+  const terminalResizeFrameRef = useRef<number | null>(null);
+  const pendingSidebarWidthRef = useRef(sidebarWidth);
+  const pendingTerminalHeightRef = useRef(terminalHeight);
 
   /* ── derived workspace data ── */
 
@@ -425,54 +562,150 @@ export default function HomePage() {
     };
   }, []);
 
+  useEffect(() => {
+    sidebarWidthRef.current = sidebarWidth;
+    pendingSidebarWidthRef.current = sidebarWidth;
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    terminalHeightRef.current = terminalHeight;
+    pendingTerminalHeightRef.current = terminalHeight;
+  }, [terminalHeight]);
+
+  useEffect(() => {
+    return () => {
+      if (sidebarResizeFrameRef.current !== null) {
+        window.cancelAnimationFrame(sidebarResizeFrameRef.current);
+      }
+      if (terminalResizeFrameRef.current !== null) {
+        window.cancelAnimationFrame(terminalResizeFrameRef.current);
+      }
+    };
+  }, []);
+
   /* ── resize handlers ── */
+
+  const scheduleSidebarWidth = useCallback((nextWidth: number) => {
+    pendingSidebarWidthRef.current = clampNumber(nextWidth, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH);
+    if (sidebarResizeFrameRef.current !== null) {
+      return;
+    }
+
+    sidebarResizeFrameRef.current = window.requestAnimationFrame(() => {
+      sidebarResizeFrameRef.current = null;
+      setSidebarWidth(pendingSidebarWidthRef.current);
+    });
+  }, []);
+
+  const scheduleTerminalHeight = useCallback(
+    (nextHeight: number) => {
+      pendingTerminalHeightRef.current = clampNumber(
+        nextHeight,
+        MIN_TERMINAL_HEIGHT,
+        maxTerminalHeight,
+      );
+      if (terminalResizeFrameRef.current !== null) {
+        return;
+      }
+
+      terminalResizeFrameRef.current = window.requestAnimationFrame(() => {
+        terminalResizeFrameRef.current = null;
+        setTerminalHeight(pendingTerminalHeightRef.current);
+      });
+    },
+    [maxTerminalHeight],
+  );
 
   const handleSidebarResize = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
+      event.currentTarget.focus();
       event.preventDefault();
+      event.currentTarget.setPointerCapture?.(event.pointerId);
       const startX = event.clientX;
-      const startW = sidebarWidth;
+      const startW = sidebarWidthRef.current;
       document.body.style.userSelect = "none";
       document.body.style.cursor = "col-resize";
 
       const onMove = (e: PointerEvent) => {
-        setSidebarWidth(
-          Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, startW + e.clientX - startX)),
-        );
+        scheduleSidebarWidth(startW + e.clientX - startX);
       };
       const onUp = () => {
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
         document.body.style.userSelect = "";
         document.body.style.cursor = "";
+        const finalWidth = pendingSidebarWidthRef.current;
+        setSidebarWidth(finalWidth);
+        saveStoredNumber(SIDEBAR_WIDTH_STORAGE_KEY, finalWidth);
       };
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
     },
-    [sidebarWidth],
+    [scheduleSidebarWidth],
   );
 
   const handleTerminalResize = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
+      event.currentTarget.focus();
       event.preventDefault();
+      event.currentTarget.setPointerCapture?.(event.pointerId);
       const startY = event.clientY;
-      const startH = terminalHeight;
+      const startH = terminalHeightRef.current;
       document.body.style.userSelect = "none";
       document.body.style.cursor = "row-resize";
 
       const onMove = (e: PointerEvent) => {
-        setTerminalHeight(Math.max(MIN_TERMINAL_HEIGHT, startH + startY - e.clientY));
+        scheduleTerminalHeight(startH + startY - e.clientY);
       };
       const onUp = () => {
         window.removeEventListener("pointermove", onMove);
         window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
         document.body.style.userSelect = "";
         document.body.style.cursor = "";
+        const finalHeight = pendingTerminalHeightRef.current;
+        setTerminalHeight(finalHeight);
+        saveStoredNumber(TERMINAL_HEIGHT_STORAGE_KEY, finalHeight);
       };
       window.addEventListener("pointermove", onMove);
       window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
     },
-    [terminalHeight],
+    [scheduleTerminalHeight],
+  );
+
+  const handleSidebarResizeKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") {
+        return;
+      }
+      event.preventDefault();
+      const delta = event.key === "ArrowRight" ? 16 : -16;
+      const nextWidth = clampNumber(sidebarWidthRef.current + delta, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH);
+      setSidebarWidth(nextWidth);
+      saveStoredNumber(SIDEBAR_WIDTH_STORAGE_KEY, nextWidth);
+    },
+    [],
+  );
+
+  const handleTerminalResizeKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
+        return;
+      }
+      event.preventDefault();
+      const delta = event.key === "ArrowUp" ? 16 : -16;
+      const nextHeight = clampNumber(
+        terminalHeightRef.current + delta,
+        MIN_TERMINAL_HEIGHT,
+        maxTerminalHeight,
+      );
+      setTerminalHeight(nextHeight);
+      saveStoredNumber(TERMINAL_HEIGHT_STORAGE_KEY, nextHeight);
+    },
+    [maxTerminalHeight],
   );
 
   /* ── actions ── */
@@ -480,8 +713,9 @@ export default function HomePage() {
   const handleRun = useCallback(() => {
     shouldAutoScrollOutputRef.current = true;
     setShowTerminal(true);
+    preloadRunRuntime();
     runNow();
-  }, [runNow]);
+  }, [preloadRunRuntime, runNow]);
 
   const handleSaveWorkspace = useCallback(() => {
     if ((cloudSavingRequired && authLoading) || isSaving) {
@@ -493,8 +727,20 @@ export default function HomePage() {
       return;
     }
 
-    void saveWorkspaceNow();
-  }, [authLoading, canSaveWorkspace, cloudSavingRequired, isSaving, saveWorkspaceNow]);
+    clearManualSaveStatusTimer();
+    setManualSaveStatus("saving");
+    void saveWorkspaceNow().then((saved) => {
+      showTemporaryManualSaveStatus(saved ? "saved" : "error");
+    });
+  }, [
+    authLoading,
+    canSaveWorkspace,
+    clearManualSaveStatusTimer,
+    cloudSavingRequired,
+    isSaving,
+    saveWorkspaceNow,
+    showTemporaryManualSaveStatus,
+  ]);
 
   const handleClearTerminal = useCallback(() => {
     shouldAutoScrollOutputRef.current = true;
@@ -740,6 +986,25 @@ export default function HomePage() {
       );
     }
 
+    if (!isCloudAuthConfigured()) {
+      return (
+        <button
+          type="button"
+          className={`inline-flex items-center justify-center gap-1 rounded-lg border border-[var(--accent)] bg-[var(--accent)] font-semibold text-white shadow-sm transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
+            compact ? "h-8 w-8 px-0" : "h-8 px-3 text-xs"
+          }`}
+          onClick={() => {
+            window.location.assign("/login");
+          }}
+        >
+          <LogIn size={compact ? 16 : 14} />
+          <span className={compact ? "sr-only" : "max-w-[5rem] truncate"}>
+            Log In
+          </span>
+        </button>
+      );
+    }
+
     return (
       <div className="flex items-center">
         <Show when="signed-out">
@@ -758,8 +1023,32 @@ export default function HomePage() {
           </SignInButton>
         </Show>
         <Show when="signed-in">
-          <div className="flex h-7 items-center rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-1.5">
-            <UserButton />
+          <div className="flex h-7 items-center">
+            <UserButton>
+              <UserButton.UserProfilePage
+                label="Appearance"
+                url="appearance"
+                labelIcon={<Palette size={16} />}
+              >
+                <div className="p-2">
+                  {renderThemeSettings()}
+                </div>
+              </UserButton.UserProfilePage>
+              <UserButton.UserProfilePage
+                label="General"
+                url="general"
+                labelIcon={<Settings size={16} />}
+              >
+                <div className="space-y-6 p-2">
+                  {renderSaveSettings()}
+                  {renderBetaSettings()}
+                </div>
+              </UserButton.UserProfilePage>
+              <UserButton.MenuItems>
+                <UserButton.Action label="manageAccount" />
+                <UserButton.Action label="signOut" />
+              </UserButton.MenuItems>
+            </UserButton>
           </div>
         </Show>
       </div>
@@ -769,44 +1058,56 @@ export default function HomePage() {
   const renderSaveControl = () => {
     const blocked = (cloudSavingRequired && authLoading) || isSaving;
     const isCloudSave = workspacePersistenceMode === "cloud";
+    const showSaving = isSaving || manualSaveStatus === "saving";
+    const showSaved = !showSaving && !hasPendingSave && manualSaveStatus === "saved";
+    const showError = !showSaving && manualSaveStatus === "error";
+    const saveStatusLabel = showSaving ? "Saving" : showSaved ? "Saved" : showError ? "Save failed" : null;
+    const saveStatusClass = showSaved
+      ? "text-[var(--green)]"
+      : showError
+        ? "text-[var(--red)]"
+        : "text-[var(--text2)]";
+    const saveTitle = showError
+      ? "Save failed. Check the message bar for details."
+      : canSaveWorkspace
+        ? isCloudSave
+          ? "Save workspace to cloud storage"
+          : "Save workspace locally on this device"
+        : "Sign in to save in the browser";
 
     return (
       <button
         type="button"
-        className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs font-semibold transition ${
+        className={`flex h-7 items-center justify-center gap-1.5 rounded-lg text-xs font-semibold transition ${
+          saveStatusLabel ? "min-w-7 px-2.5" : "w-7"
+        } ${
           canSaveWorkspace
-            ? "text-[var(--text2)] hover:bg-[var(--hover)]"
+            ? `${saveStatusClass} hover:bg-[var(--hover)]`
             : "cursor-not-allowed border border-[var(--separator)] bg-[var(--surface2)] text-[var(--text3)] opacity-70"
         } ${blocked ? "opacity-60" : ""}`}
         aria-label="Save workspace"
         aria-disabled={!canSaveWorkspace || blocked}
         disabled={blocked}
-        title={
-          canSaveWorkspace
-            ? isCloudSave
-              ? "Save workspace to cloud storage"
-              : "Save workspace locally on this device"
-            : "Sign in to save in the browser"
-        }
+        title={saveTitle}
         onClick={handleSaveWorkspace}
       >
-        <Save size={18} />
+        {showSaving ? (
+          <LoaderCircle size={17} className="animate-spin" />
+        ) : showSaved ? (
+          <Check size={17} />
+        ) : showError ? (
+          <CircleAlert size={17} />
+        ) : (
+          <Save size={18} />
+        )}
+        {saveStatusLabel ? <span>{saveStatusLabel}</span> : null}
       </button>
     );
   };
 
-  const renderManualModal = () =>
-    showManual ? (
-      <div className="fixed inset-0 z-[var(--z-tooltip)] flex items-start justify-center bg-[var(--overlay)] p-4 pt-8 pb-8">
-        <div
-          role="dialog"
-          aria-modal="true"
-          className="max-h-[calc(100dvh-4rem)] w-full max-w-5xl overflow-y-auto rounded-2xl border border-[var(--separator)] bg-[var(--bg)] shadow-[var(--shadow-modal)]"
-        >
-          <ManualContent isModal onClose={() => setShowManual(false)} />
-        </div>
-      </div>
-    ) : null;
+  const openManualPage = () => {
+    window.location.assign("/manual");
+  };
 
   const renderFlowchartPromptDialog = () =>
     showFlowchartPrompt ? (
@@ -899,14 +1200,19 @@ export default function HomePage() {
           <form className="mt-5 space-y-4" onSubmit={submitCreateFile}>
             <label className="block">
               <span className="mb-2 block text-sm text-[var(--text2)]">File name</span>
-              <input
-                ref={createFileInputRef}
-                aria-label="File name"
-                value={createFileName}
-                onChange={(event) => setCreateFileName(event.target.value)}
-                placeholder="main.pseudo"
-                className="h-10 w-full rounded-xl border border-[var(--separator)] bg-[var(--bg)] px-3 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
-              />
+              <div className="flex h-10 w-full overflow-hidden rounded-xl border border-[var(--separator)] bg-[var(--bg)] focus-within:border-[var(--accent)]">
+                <input
+                  ref={createFileInputRef}
+                  aria-label="File name"
+                  value={createFileName}
+                  onChange={(event) => setCreateFileName(normalizeDocumentEditableName(event.target.value))}
+                  placeholder="main"
+                  className="min-w-0 flex-1 border-0 bg-transparent px-3 text-sm text-[var(--text)] outline-none"
+                />
+                <span className="flex shrink-0 items-center border-l border-[var(--separator)] bg-[var(--surface2)] px-3 text-sm text-[var(--text3)]">
+                  {PSEUDO_EXTENSION}
+                </span>
+              </div>
             </label>
             <div className="flex justify-end gap-2">
               <button
@@ -982,10 +1288,12 @@ export default function HomePage() {
       <section className="relative w-full max-w-md overflow-hidden rounded-2xl border border-[var(--separator)] bg-[var(--surface)] p-8 shadow-[var(--shadow-xl)]">
         <div className="relative flex flex-col items-center text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--surface)]">
-            <img
-              src="/branding/app-icon.svg"
+            <Image
+              src="/branding/app-icon-128.png"
               alt="Pseudocode Compiler"
-              className="h-9 w-9"
+              width={44}
+              height={44}
+              className="h-11 w-11"
             />
           </div>
           <h2 className="mt-5 text-2xl font-semibold text-[var(--text)]">
@@ -998,7 +1306,7 @@ export default function HomePage() {
             <button
               type="button"
               className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-5 text-sm font-semibold text-white transition hover:brightness-110"
-              onClick={openCreateFileDialog}
+                  onClick={() => openCreateFileDialog()}
             >
               <FilePlus size={16} />
               Create New File
@@ -1105,12 +1413,16 @@ export default function HomePage() {
 
   /* ── dialog handlers ── */
 
+  const openRenameDialog = (nodeId: string, currentName: string, isDocument: boolean) => {
+    setRenameDialog({ nodeId, currentName, isDocument });
+    setRenameValue(isDocument ? getDocumentEditableName(currentName) : currentName);
+  };
+
   const handleRenameNode = (nodeId: string) => {
     if (!workspace) return;
     const node = workspace.nodes[nodeId];
     if (!node) return;
-    setRenameDialog({ nodeId, currentName: node.name });
-    setRenameValue(node.name);
+    openRenameDialog(node.id, node.name, node.type === "document");
   };
 
   const handleDeleteNodes = (nodeIds: string[]) => {
@@ -1126,28 +1438,35 @@ export default function HomePage() {
     });
   };
 
-  const openCreateFileDialog = () => {
-    setCreateFileName("main.pseudo");
+  const openCreateFileDialog = (options?: { parentId?: string; initialName?: string }) => {
+    setCreateFileParentId(options?.parentId);
+    setCreateFileName(getDocumentEditableName(options?.initialName ?? "main.pseudo"));
     setShowCreateFileDialog(true);
+  };
+
+  const handleCreateDocumentFromSidebar = (parentId?: string) => {
+    openCreateFileDialog({ parentId, initialName: "Untitled.pseudo" });
   };
 
   const closeCreateFileDialog = () => {
     setShowCreateFileDialog(false);
-    setCreateFileName("main.pseudo");
+    setCreateFileName("main");
+    setCreateFileParentId(undefined);
   };
 
   const submitCreateFile = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const name = createFileName.trim();
-    if (!name) return;
-    createDocumentInWorkspace(undefined, { name });
+    const baseName = normalizeDocumentEditableName(createFileName);
+    if (!baseName) return;
+    const name = `${baseName}${PSEUDO_EXTENSION}`;
+    createDocumentInWorkspace(createFileParentId, { name });
     closeCreateFileDialog();
   };
 
   const submitRename = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!renameDialog) return;
-    const name = renameValue.trim();
+    const name = getSubmittedRenameValue(renameDialog, renameValue);
     if (!name) return;
     if (renameNodeInWorkspace(renameDialog.nodeId, name)) {
       setRenameDialog(null);
@@ -1279,6 +1598,8 @@ export default function HomePage() {
                     type="button"
                     className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--green)] text-white transition hover:brightness-110 disabled:opacity-50"
                     aria-label={isRunning ? "Running" : "Run"}
+                    onPointerEnter={preloadRunRuntime}
+                    onFocus={preloadRunRuntime}
                     onClick={handleTouchRun}
                     disabled={isRunning || !currentDocument}
                   >
@@ -1293,20 +1614,33 @@ export default function HomePage() {
               <div className="flex min-h-0 flex-1">
                 {touchSidebarVisible ? (
                   <>
-                    <div className="min-h-0 shrink-0 overflow-hidden bg-[var(--sidebar)]" style={{ width: TOUCH_SIDEBAR_WIDTH }}>
+                    <div
+                      className="min-h-0 shrink-0 overflow-hidden bg-[var(--sidebar)]"
+                      style={{ width: sidebarWidth }}
+                    >
                       <WorkspaceSidebar
                         workspace={workspace}
                         onSelectDocument={handleTouchDocumentSelect}
                         onToggleFolder={toggleFolder}
                         onExpandFolder={expandFolder}
                         onCreateFolder={createFolderInWorkspace}
-                        onCreateDocument={createDocumentInWorkspace}
+                        onCreateDocument={handleCreateDocumentFromSidebar}
                         onRenameNode={handleRenameNode}
                         onDeleteNodes={handleDeleteNodes}
                         onMoveNodes={moveNodesInWorkspace}
                       />
                     </div>
-                    <div className="w-px shrink-0 bg-[var(--separator)]" />
+                    <div
+                      role="separator"
+                      aria-label="Resize sidebar"
+                      aria-orientation="vertical"
+                      tabIndex={0}
+                      className="relative w-3 shrink-0 cursor-col-resize touch-none"
+                      onPointerDown={handleSidebarResize}
+                      onKeyDown={handleSidebarResizeKeyDown}
+                    >
+                      <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[var(--separator)]" />
+                    </div>
                   </>
                 ) : null}
 
@@ -1335,12 +1669,31 @@ export default function HomePage() {
                   <div className="h-px shrink-0 bg-[var(--separator)]" />
 
                   {touchOutputVisible ? (
-                    <div
-                      className="min-h-0 shrink-0 overflow-hidden"
-                      style={{ height: TOUCH_OUTPUT_HEIGHT }}
-                    >
-                      {renderTouchOutputSurface("Output", () => setTouchOutputVisible(false))}
-                    </div>
+                    <>
+                      <div
+                        role="separator"
+                        aria-label="Resize output"
+                        aria-orientation="horizontal"
+                        tabIndex={0}
+                        className="relative h-3 shrink-0 cursor-row-resize touch-none"
+                        onPointerDown={handleTerminalResize}
+                        onKeyDown={handleTerminalResizeKeyDown}
+                      >
+                        <div className="absolute left-0 top-1/2 h-px w-full -translate-y-1/2 bg-[var(--separator)]" />
+                      </div>
+                      <div
+                        className="min-h-0 shrink-0 overflow-hidden"
+                        style={{
+                          height: clampNumber(
+                            terminalHeight,
+                            MIN_TERMINAL_HEIGHT,
+                            maxTerminalHeight,
+                          ),
+                        }}
+                      >
+                        {renderTouchOutputSurface("Output", () => setTouchOutputVisible(false))}
+                      </div>
+                    </>
                   ) : (
                     <button
                       type="button"
@@ -1375,7 +1728,7 @@ export default function HomePage() {
                   type="button"
             className="flex h-8 w-8 items-center justify-center rounded-lg text-[var(--accent)] transition hover:bg-[var(--hover)]"
             aria-label="Open manual"
-            onClick={() => setShowManual(true)}
+            onClick={openManualPage}
           >
             <Ellipsis size={22} />
           </button>
@@ -1383,6 +1736,8 @@ export default function HomePage() {
                   type="button"
                   className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--green)] text-white transition hover:brightness-110 disabled:opacity-50"
                   aria-label={isRunning ? "Running" : "Run"}
+                  onPointerEnter={preloadRunRuntime}
+                  onFocus={preloadRunRuntime}
                   onClick={handleTouchRun}
                   disabled={isRunning || !currentDocument}
                 >
@@ -1418,7 +1773,7 @@ export default function HomePage() {
                       onToggleFolder={toggleFolder}
                       onExpandFolder={expandFolder}
                       onCreateFolder={createFolderInWorkspace}
-                      onCreateDocument={createDocumentInWorkspace}
+                      onCreateDocument={handleCreateDocumentFromSidebar}
                       onRenameNode={handleRenameNode}
                       onDeleteNodes={handleDeleteNodes}
                       onMoveNodes={moveNodesInWorkspace}
@@ -1444,7 +1799,7 @@ export default function HomePage() {
                       <button
                         type="button"
                         className="mt-6 inline-flex h-10 items-center justify-center self-start rounded-2xl bg-[var(--accent)] px-5 text-sm font-semibold text-white transition hover:brightness-110"
-                        onClick={() => setShowManual(true)}
+                        onClick={openManualPage}
                       >
                         Open Manual
                       </button>
@@ -1517,13 +1872,26 @@ export default function HomePage() {
                 <form className="mt-5 space-y-4" onSubmit={submitRename}>
                   <label className="block">
                     <span className="mb-2 block text-sm text-[var(--text2)]">Item name</span>
-                    <input
-                      ref={renameInputRef}
-                      aria-label="Item name"
-                      value={renameValue}
-                      onChange={(event) => setRenameValue(event.target.value)}
-                      className="h-10 w-full rounded-xl border border-[var(--separator)] bg-[var(--bg)] px-3 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
-                    />
+                    <div className="flex h-10 w-full overflow-hidden rounded-xl border border-[var(--separator)] bg-[var(--bg)] focus-within:border-[var(--accent)]">
+                      <input
+                        ref={renameInputRef}
+                        aria-label="Item name"
+                        value={renameValue}
+                        onChange={(event) =>
+                          setRenameValue(
+                            renameDialog.isDocument
+                              ? normalizeDocumentEditableName(event.target.value)
+                              : event.target.value,
+                          )
+                        }
+                        className="min-w-0 flex-1 border-0 bg-transparent px-3 text-sm text-[var(--text)] outline-none"
+                      />
+                      {renameDialog.isDocument ? (
+                        <span className="flex shrink-0 items-center border-l border-[var(--separator)] bg-[var(--surface2)] px-3 text-sm text-[var(--text3)]">
+                          {PSEUDO_EXTENSION}
+                        </span>
+                      ) : null}
+                    </div>
                   </label>
                   <div className="flex justify-end gap-2">
                     <button
@@ -1631,7 +1999,6 @@ export default function HomePage() {
           )}
 
           {renderSignInPromptDialog()}
-          {renderManualModal()}
           {renderCreateFileDialog()}
           {renderFlowchartPromptDialog()}
         </div>
@@ -1690,7 +2057,7 @@ export default function HomePage() {
             type="button"
             className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text3)] transition hover:text-[var(--text2)]"
             aria-label="Manual"
-            onClick={() => setShowManual(true)}
+            onClick={openManualPage}
           >
             <BookOpen size={18} />
           </button>
@@ -1709,18 +2076,22 @@ export default function HomePage() {
               <GitBranch size={18} />
             </button>
           ) : null}
-          <button
-            type="button"
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text3)] transition hover:text-[var(--text2)]"
-            aria-label="Settings"
-            onClick={() => setShowSettingsPanel(true)}
-          >
-            <Settings size={18} />
-          </button>
+          {!isSignedIn ? (
+            <button
+              type="button"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text3)] transition hover:text-[var(--text2)]"
+              aria-label="Settings"
+              onClick={() => setShowSettingsPanel(true)}
+            >
+              <Settings size={18} />
+            </button>
+          ) : null}
           <button
             type="button"
             className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--green)] text-white transition hover:brightness-110 disabled:opacity-50"
             aria-label={isRunning ? "Running" : "Run"}
+            onPointerEnter={preloadRunRuntime}
+            onFocus={preloadRunRuntime}
             onClick={handleRun}
             disabled={isRunning || !currentDocument}
           >
@@ -1770,7 +2141,7 @@ export default function HomePage() {
             onToggleFolder={toggleFolder}
             onExpandFolder={expandFolder}
             onCreateFolder={createFolderInWorkspace}
-            onCreateDocument={createDocumentInWorkspace}
+            onCreateDocument={handleCreateDocumentFromSidebar}
             onRenameNode={handleRenameNode}
             onDeleteNodes={handleDeleteNodes}
             onMoveNodes={moveNodesInWorkspace}
@@ -1779,9 +2150,16 @@ export default function HomePage() {
 
         {/* ──── Sidebar Resize Handle ──── */}
         <div
-          className="w-px shrink-0 cursor-col-resize bg-[var(--separator)]"
+          role="separator"
+          aria-label="Resize sidebar"
+          aria-orientation="vertical"
+          tabIndex={0}
+          className="group relative w-2 shrink-0 cursor-col-resize touch-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
           onPointerDown={handleSidebarResize}
-        />
+          onKeyDown={handleSidebarResizeKeyDown}
+        >
+          <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-[var(--separator)] transition-colors group-hover:bg-[var(--accent)]" />
+        </div>
 
         {/* ──── Editor Area ──── */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[var(--bg)]">
@@ -1894,16 +2272,29 @@ export default function HomePage() {
           {/* Terminal Resize Handle */}
           {showTerminal && (
             <div
-              className="h-px shrink-0 cursor-row-resize bg-[var(--separator)]"
+              role="separator"
+              aria-label="Resize terminal"
+              aria-orientation="horizontal"
+              tabIndex={0}
+              className="group relative h-2 shrink-0 cursor-row-resize touch-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]"
               onPointerDown={handleTerminalResize}
-            />
+              onKeyDown={handleTerminalResizeKeyDown}
+            >
+              <div className="absolute left-0 top-1/2 h-px w-full -translate-y-1/2 bg-[var(--separator)] transition-colors group-hover:bg-[var(--accent)]" />
+            </div>
           )}
 
           {/* Terminal Panel */}
           {showTerminal && (
             <div
               className="flex shrink-0 flex-col overflow-hidden bg-[var(--surface)]"
-              style={{ height: terminalHeight }}
+              style={{
+                height: clampNumber(
+                  terminalHeight,
+                  MIN_TERMINAL_HEIGHT,
+                  maxTerminalHeight,
+                ),
+              }}
             >
               {/* Terminal Header */}
               <div className="flex h-8 shrink-0 items-center gap-2 px-3">
@@ -2073,13 +2464,26 @@ export default function HomePage() {
             <form className="mt-5 space-y-4" onSubmit={submitRename}>
               <label className="block">
                 <span className="mb-2 block text-sm text-[var(--text2)]">Item name</span>
-                <input
-                  ref={renameInputRef}
-                  aria-label="Item name"
-                  value={renameValue}
-                  onChange={(event) => setRenameValue(event.target.value)}
-                  className="h-10 w-full rounded-xl border border-[var(--separator)] bg-[var(--bg)] px-3 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
-                />
+                <div className="flex h-10 w-full overflow-hidden rounded-xl border border-[var(--separator)] bg-[var(--bg)] focus-within:border-[var(--accent)]">
+                  <input
+                    ref={renameInputRef}
+                    aria-label="Item name"
+                    value={renameValue}
+                    onChange={(event) =>
+                      setRenameValue(
+                        renameDialog.isDocument
+                          ? normalizeDocumentEditableName(event.target.value)
+                          : event.target.value,
+                      )
+                    }
+                    className="min-w-0 flex-1 border-0 bg-transparent px-3 text-sm text-[var(--text)] outline-none"
+                  />
+                  {renameDialog.isDocument ? (
+                    <span className="flex shrink-0 items-center border-l border-[var(--separator)] bg-[var(--surface2)] px-3 text-sm text-[var(--text3)]">
+                      {PSEUDO_EXTENSION}
+                    </span>
+                  ) : null}
+                </div>
               </label>
               <div className="flex justify-end gap-2">
                 <button
@@ -2140,7 +2544,6 @@ export default function HomePage() {
       )}
 
       {renderSignInPromptDialog()}
-      {renderManualModal()}
       {renderCreateFileDialog()}
       {renderFlowchartPromptDialog()}
     </main>

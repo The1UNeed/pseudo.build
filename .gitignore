@@ -1,4 +1,5 @@
 .vercel
+.clerk/
 .next
 node_modules
 dist

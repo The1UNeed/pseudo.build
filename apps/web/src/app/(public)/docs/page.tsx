@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, BookOpen, Home } from "lucide-react";
+import { ArrowRight, BookOpen } from "lucide-react";
+import { PublicHeader } from "@/app/components/PublicHeader";
 import { docs, siteUrl } from "@/lib/seo-content";
 
 export const metadata: Metadata = {
@@ -28,16 +29,7 @@ export default function DocsIndexPage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
-      <header className="border-b border-[#d7ddd0] bg-white">
-        <nav className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5">
-          <Link href="/" className="inline-flex items-center gap-2 text-sm font-black">
-            <Home size={16} /> PseudoEditor
-          </Link>
-          <Link href="/app" className="rounded-md bg-[#151716] px-4 py-2 text-sm font-bold text-white">
-            Open app
-          </Link>
-        </nav>
-      </header>
+      <PublicHeader active="docs" />
       <section className="mx-auto max-w-6xl px-5 py-14">
         <p className="text-xs font-black uppercase tracking-[0.18em] text-[#0b6e4f]">Documentation</p>
         <h1 className="mt-3 text-4xl font-black md:text-6xl">Pseudocode docs for browser practice.</h1>

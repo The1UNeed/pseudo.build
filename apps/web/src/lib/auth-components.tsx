@@ -13,6 +13,8 @@ import { getClientAppPlatform, platformUsesCloudSaving } from "@/lib/platform";
 
 const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
+type AuthState = ReturnType<typeof useClerkAuth>;
+
 export function isCloudAuthConfigured() {
   return Boolean(clerkPublishableKey);
 }
@@ -38,6 +40,17 @@ export function ClerkProvider({ children }: { children: ReactNode }) {
       signInFallbackRedirectUrl="/app"
       signUpFallbackRedirectUrl="/app"
       afterSignOutUrl="/"
+      localization={{
+        userButton: {
+          action__manageAccount: "Settings",
+        },
+        userProfile: {
+          navbar: {
+            title: "Settings",
+            description: "Manage your account and application preferences.",
+          },
+        },
+      }}
       appearance={{
         elements: {
           modalBackdrop: {
@@ -50,6 +63,21 @@ export function ClerkProvider({ children }: { children: ReactNode }) {
           modalCloseButton: {
             backgroundColor: "transparent",
             border: "0",
+            boxShadow: "none",
+            outline: "none",
+            "&:focus": {
+              boxShadow: "none",
+              outline: "none",
+            },
+            "&:focus-visible": {
+              boxShadow: "none",
+              outline: "none",
+            },
+          },
+          userButtonAvatarBox: {
+            boxShadow: "none",
+          },
+          userButtonTrigger: {
             boxShadow: "none",
             outline: "none",
             "&:focus": {
@@ -107,7 +135,7 @@ export function SignUpButton({
   );
 }
 
-export function UserButton(props: ComponentProps<typeof ClerkUserButton>) {
+function UserButtonBase(props: ComponentProps<typeof ClerkUserButton>) {
   if (!cloudAuthRequired() || !isCloudAuthConfigured()) {
     return null;
   }
@@ -115,13 +143,30 @@ export function UserButton(props: ComponentProps<typeof ClerkUserButton>) {
   return <ClerkUserButton {...props} />;
 }
 
+export const UserButton = Object.assign(UserButtonBase, {
+  Action: ClerkUserButton.Action,
+  Link: ClerkUserButton.Link,
+  MenuItems: ClerkUserButton.MenuItems,
+  UserProfileLink: ClerkUserButton.UserProfileLink,
+  UserProfilePage: ClerkUserButton.UserProfilePage,
+});
+
 export function useAuth() {
   if (!cloudAuthRequired() || !isCloudAuthConfigured()) {
     return {
+      actor: null,
+      getToken: async () => null,
+      has: () => false,
       isLoaded: true,
       isSignedIn: false,
+      orgId: null,
+      orgRole: null,
+      orgSlug: null,
+      sessionClaims: null,
+      sessionId: null,
+      signOut: async () => undefined,
       userId: null,
-    };
+    } as AuthState;
   }
 
   // Clerk's hook is only reachable in configured builds, where AppAuthProvider

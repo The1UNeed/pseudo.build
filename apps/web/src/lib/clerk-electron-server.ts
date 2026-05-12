@@ -5,6 +5,10 @@ export async function auth() {
   };
 }
 
+export async function verifyToken() {
+  return {};
+}
+
 export async function clerkClient() {
   return {
     users: {

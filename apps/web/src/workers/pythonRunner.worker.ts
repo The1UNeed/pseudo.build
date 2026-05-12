@@ -3,6 +3,7 @@
 import type { Diagnostic, RunResult } from "@/compiler/types";
 
 type RunWorkerMessage = {
+  kind: "run";
   id: number;
   request: {
     pythonCode: string;
@@ -10,6 +11,13 @@ type RunWorkerMessage = {
     virtualFiles: Record<string, string[]>;
   };
 };
+
+type PreloadWorkerMessage = {
+  kind: "preload";
+  id: number;
+};
+
+type WorkerMessage = RunWorkerMessage | PreloadWorkerMessage;
 
 type WorkerRunResponseMessage = {
   kind: "run-result";
@@ -96,16 +104,52 @@ function buildRuntimeDiagnostics(tracebackText: string): Diagnostic[] {
   ];
 }
 
-self.onmessage = async (event: MessageEvent<RunWorkerMessage>) => {
-  const { id, request } = event.data;
+async function ensureRuntimeReady() {
+  const pyodide = await getPyodide();
+  if (!runtimeReadyNotified) {
+    const statusMessage: WorkerStatusMessage = { kind: "runtime-status", status: "ready" };
+    self.postMessage(statusMessage);
+    runtimeReadyNotified = true;
+  }
+  return pyodide;
+}
+
+self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
+  const { id } = event.data;
+
+  if (event.data.kind === "preload") {
+    try {
+      await ensureRuntimeReady();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown worker error";
+      const result: RunResult = {
+        success: false,
+        stdout: "",
+        stderr: message,
+        diagnostics: [
+          {
+            code: "RUN500",
+            message,
+            severity: "error",
+            line: 1,
+            column: 1,
+            endLine: 1,
+            endColumn: 1,
+          },
+        ],
+        virtualFiles: {},
+      };
+
+      const response: WorkerRunResponseMessage = { kind: "run-result", id, result };
+      self.postMessage(response);
+    }
+    return;
+  }
+
+  const { request } = event.data;
 
   try {
-    const pyodide = await getPyodide();
-    if (!runtimeReadyNotified) {
-      const statusMessage: WorkerStatusMessage = { kind: "runtime-status", status: "ready" };
-      self.postMessage(statusMessage);
-      runtimeReadyNotified = true;
-    }
+    const pyodide = await ensureRuntimeReady();
 
     pyodide.globals.set("__runner_source", request.pythonCode);
     pyodide.globals.set("__runner_stdin_json", JSON.stringify(request.stdinLines));
@@ -124,7 +168,12 @@ _runtime_globals = {
 _runtime_error = ""
 
 try:
-    exec(__runner_source, _runtime_globals, _runtime_globals)
+    _runtime_cache = globals().setdefault("__runner_code_cache", {})
+    _runtime_code = _runtime_cache.get(__runner_source)
+    if _runtime_code is None:
+        _runtime_code = compile(__runner_source, "<pseudocode>", "exec")
+        _runtime_cache[__runner_source] = _runtime_code
+    exec(_runtime_code, _runtime_globals, _runtime_globals)
 except Exception:
     _runtime_error = traceback.format_exc()
 

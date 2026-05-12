@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createDocument, getActiveDocument, updateDocumentSource } from "@igcse/workspace";
+import {
+  createDocument,
+  createEmptyWorkspace,
+  getActiveDocument,
+  updateDocumentSource,
+} from "@igcse/workspace";
 
 const dbStore = new Map<string, unknown>();
 const localStore = new Map<string, string>();
@@ -74,6 +79,10 @@ describe("workspace storage", () => {
           }
         },
       },
+    });
+    Object.defineProperty(globalThis, "fetch", {
+      configurable: true,
+      value: vi.fn(),
     });
     vi.resetModules();
   });
@@ -176,5 +185,80 @@ describe("workspace storage", () => {
     expect(getActiveDocument(reloaded)?.source).toBe('OUTPUT "Saved"');
 
     vi.unstubAllEnvs();
+  });
+
+  it("backfills the cloud workspace from local cache when Convex has no workspace yet", async () => {
+    const localWorkspace = createDocument(createEmptyWorkspace("2026-03-15T00:00:00.000Z"), {
+      name: "synced",
+      source: 'OUTPUT "Local cache"',
+      now: "2026-03-15T00:00:00.000Z",
+    });
+    dbStore.set("current", localWorkspace);
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(new Response(JSON.stringify({ workspace: null }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    const storage = await import("@/lib/storage");
+    const loaded = await storage.loadWorkspace('OUTPUT "Fallback"', { mode: "cloud" });
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    expect(getActiveDocument(loaded)?.source).toBe('OUTPUT "Local cache"');
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/workspace", expect.objectContaining({ method: "GET" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/workspace",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ workspace: localWorkspace }),
+      }),
+    );
+  });
+
+  it("requires Convex to accept cloud-mode saves", async () => {
+    const workspace = createDocument(createEmptyWorkspace("2026-03-15T00:00:00.000Z"), {
+      name: "cloud",
+      source: 'OUTPUT "Cloud"',
+      now: "2026-03-15T00:00:00.000Z",
+    });
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 }),
+    );
+
+    const storage = await import("@/lib/storage");
+
+    await expect(storage.saveWorkspace(workspace, { mode: "cloud" })).rejects.toThrow(
+      "Unable to save workspace to Convex. Unauthorized",
+    );
+    expect(dbStore.get("current")).toEqual(workspace);
+  });
+
+  it("sends a Clerk bearer token when cloud sync has one", async () => {
+    const workspace = createDocument(createEmptyWorkspace("2026-03-15T00:00:00.000Z"), {
+      name: "cloud",
+      source: 'OUTPUT "Cloud"',
+      now: "2026-03-15T00:00:00.000Z",
+    });
+    const fetchMock = vi.mocked(fetch);
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+
+    const storage = await import("@/lib/storage");
+    await storage.saveWorkspace(workspace, {
+      getAuthToken: async () => "session-token",
+      mode: "cloud",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/workspace",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer session-token",
+        }),
+        method: "PUT",
+      }),
+    );
   });
 });

@@ -6,8 +6,8 @@ export function getPseudocodeEditorOptions(
   return {
     minimap: { enabled: false },
     fontFamily: "'Fira Code', monospace",
-    fontSize: 13,
-    lineHeight: 21,
+    fontSize: appleTouchDevice ? 16 : 13,
+    lineHeight: appleTouchDevice ? 24 : 21,
     lineNumbers: "on",
     lineNumbersMinChars: 3,
     roundedSelection: false,
@@ -24,8 +24,9 @@ export function getPseudocodeEditorOptions(
       strings: false,
     },
     scrollbar: {
-      verticalScrollbarSize: 10,
-      horizontalScrollbarSize: 10,
+      verticalScrollbarSize: appleTouchDevice ? 14 : 10,
+      horizontalScrollbarSize: appleTouchDevice ? 14 : 10,
+      alwaysConsumeMouseWheel: false,
     },
     suggestOnTriggerCharacters: true,
     acceptSuggestionOnEnter: "off",
@@ -38,5 +39,9 @@ export function getPseudocodeEditorOptions(
     tabCompletion: "on",
     // Safari on iPhone/iPad exposes EditContext, but Monaco input handling is unreliable there.
     editContext: !appleTouchDevice,
+    hover: {
+      enabled: !appleTouchDevice,
+    },
+    occurrencesHighlight: appleTouchDevice ? "off" : "singleFile",
   };
 }

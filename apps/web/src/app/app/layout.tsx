@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ClerkProvider } from "@/lib/auth-components";
 
 export const metadata: Metadata = {
   title: "Browser Pseudocode Compiler",
@@ -10,5 +11,5 @@ export const metadata: Metadata = {
 };
 
 export default function AppRouteLayout({ children }: { children: React.ReactNode }) {
-  return children;
+  return <ClerkProvider>{children}</ClerkProvider>;
 }

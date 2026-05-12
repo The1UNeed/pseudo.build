@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ClerkProvider } from "@/lib/auth-components";
 import LogoutPageClient from "./LogoutPageClient";
 
 export const metadata: Metadata = {
@@ -11,8 +12,10 @@ export const metadata: Metadata = {
 
 export default function LogoutPage() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#f7f8f3] px-5 py-12">
-      <LogoutPageClient />
-    </main>
+    <ClerkProvider>
+      <main className="flex min-h-screen items-center justify-center bg-[#f7f8f3] px-5 py-12">
+        <LogoutPageClient />
+      </main>
+    </ClerkProvider>
   );
 }

@@ -143,6 +143,7 @@ export function MonacoPseudocodeEditor({
 }: MonacoPseudocodeEditorProps) {
   const monacoRef = useRef<typeof import("monaco-editor") | null>(null);
   const editorRef = useRef<import("monaco-editor").editor.IStandaloneCodeEditor | null>(null);
+  const touchFocusCleanupRef = useRef<(() => void) | null>(null);
   const appleTouchDevice = useMemo(() => isAppleTouchDevice(typeof navigator === "undefined" ? undefined : navigator), []);
   const editorOptions = useMemo(() => getPseudocodeEditorOptions(appleTouchDevice), [appleTouchDevice]);
 
@@ -169,6 +170,8 @@ export function MonacoPseudocodeEditor({
   const handleMount: OnMount = (editor, monaco) => {
     monacoRef.current = monaco;
     editorRef.current = editor;
+    touchFocusCleanupRef.current?.();
+    touchFocusCleanupRef.current = null;
 
     if (!pseudocodeLanguageRegistered) {
       pseudocodeLanguageRegistered = true;
@@ -508,7 +511,38 @@ export function MonacoPseudocodeEditor({
     });
 
     monaco.editor.setTheme(theme === "dark" ? "examLabThemeDark" : "examLabThemeLight");
+
+    if (appleTouchDevice) {
+      const editorElement = editor.getDomNode();
+      const handleTouchFocus = (event: globalThis.PointerEvent) => {
+        if (event.pointerType === "mouse") {
+          return;
+        }
+
+        const target = event.target instanceof HTMLElement ? event.target : null;
+        if (target?.closest(".iPadShowKeyboard")) {
+          return;
+        }
+
+        window.requestAnimationFrame(() => {
+          editor.focus();
+        });
+      };
+
+      editorElement?.addEventListener("pointerup", handleTouchFocus, { passive: true });
+      touchFocusCleanupRef.current = () => {
+        editorElement?.removeEventListener("pointerup", handleTouchFocus);
+      };
+    }
   };
+
+  useEffect(
+    () => () => {
+      touchFocusCleanupRef.current?.();
+      touchFocusCleanupRef.current = null;
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!monacoRef.current || !editorRef.current) {

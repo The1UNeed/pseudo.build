@@ -32,11 +32,15 @@ import {
   updateVirtualFiles,
   workspaceHasFolder,
 } from "@igcse/workspace";
-import { compilePseudocode } from "@/compiler";
 import type { Diagnostic } from "@/compiler/types";
 import { loadWorkspace, saveWorkspace } from "@/lib/storage";
 import type { WorkspacePersistenceMode } from "@/lib/platform";
 import { pythonRunner } from "@/runtime/executePython";
+import {
+  compilePseudocodeInWorker,
+  getCompileCacheKey,
+  preloadPseudocodeCompiler,
+} from "@/runtime/compilePseudocodeInWorker";
 
 const INPUT_REQUEST_ERROR_TEXT = "INPUT requested but no stdin lines remain";
 const MAX_INTERACTIVE_INPUTS = 200;
@@ -52,6 +56,7 @@ interface WorkspaceSessionOptions {
   autoSaveDelayMs?: number;
   cloudSyncEnabled?: boolean;
   cloudSyncLoading?: boolean;
+  getCloudAuthToken?: () => Promise<string | null>;
   persistenceMode?: WorkspacePersistenceMode;
 }
 
@@ -60,6 +65,8 @@ interface PendingTerminalInput {
   prompt: string | null;
   text: string;
 }
+
+type SaveRequestSource = "autosave" | "manual";
 
 function isInputRequestRuntimeError(stderr: string): boolean {
   return stderr.includes(INPUT_REQUEST_ERROR_TEXT);
@@ -113,7 +120,16 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
   const saveTimerRef = useRef<number | null>(null);
   const saveRequestIdRef = useRef(0);
   const loadedRef = useRef(false);
+  const getCloudAuthTokenRef = useRef(options.getCloudAuthToken);
   const pendingInputResolverRef = useRef<((value: string | null) => void) | null>(null);
+
+  useEffect(() => {
+    getCloudAuthTokenRef.current = options.getCloudAuthToken;
+  }, [options.getCloudAuthToken]);
+
+  const getCurrentCloudAuthToken = useCallback(async () => {
+    return await (getCloudAuthTokenRef.current?.() ?? null);
+  }, []);
 
   useEffect(() => {
     if (cloudSyncLoading) {
@@ -134,7 +150,10 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
       setIsSaving(false);
     });
 
-    void loadWorkspace(defaultSource, { mode: persistenceMode }).then((loadedWorkspace) => {
+    void loadWorkspace(defaultSource, {
+      ...(getCloudAuthTokenRef.current ? { getAuthToken: getCurrentCloudAuthToken } : {}),
+      mode: persistenceMode,
+    }).then((loadedWorkspace) => {
       if (cancelled) {
         return;
       }
@@ -156,9 +175,13 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
         resolver(null);
       }
     };
-  }, [cloudSyncLoading, defaultSource, persistenceMode]);
+  }, [cloudSyncLoading, defaultSource, getCurrentCloudAuthToken, persistenceMode]);
 
-  const persistWorkspace = useCallback(async (nextWorkspace: WorkspaceState, requestId: number) => {
+  const persistWorkspace = useCallback(async (
+    nextWorkspace: WorkspaceState,
+    requestId: number,
+    source: SaveRequestSource,
+  ) => {
     if (persistenceMode === "memory") {
       if (saveRequestIdRef.current !== requestId) {
         return false;
@@ -172,7 +195,10 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
 
     setIsSaving(true);
     try {
-      await saveWorkspace(nextWorkspace, { mode: persistenceMode });
+      await saveWorkspace(nextWorkspace, {
+        ...(getCloudAuthTokenRef.current ? { getAuthToken: getCurrentCloudAuthToken } : {}),
+        mode: persistenceMode,
+      });
       if (saveRequestIdRef.current !== requestId) {
         return false;
       }
@@ -184,7 +210,11 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
       if (saveRequestIdRef.current !== requestId) {
         return false;
       }
-      setSaveError("Autosave failed. Changes remain in memory on this device.");
+      setSaveError(
+        source === "manual"
+          ? "Save failed. Changes remain on this device."
+          : "Autosave failed. Changes remain on this device.",
+      );
       setHasPendingSave(true);
       return false;
     } finally {
@@ -192,7 +222,7 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
         setIsSaving(false);
       }
     }
-  }, [persistenceMode]);
+  }, [getCurrentCloudAuthToken, persistenceMode]);
 
   const commitWorkspace = useCallback(
     (nextWorkspace: WorkspaceState, mode: "immediate" | "debounced") => {
@@ -218,7 +248,7 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
           window.clearTimeout(saveTimerRef.current);
           saveTimerRef.current = null;
         }
-        void persistWorkspace(nextWorkspace, requestId);
+        void persistWorkspace(nextWorkspace, requestId, "autosave");
         return;
       }
 
@@ -227,7 +257,7 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
       }
       saveTimerRef.current = window.setTimeout(() => {
         saveTimerRef.current = null;
-        void persistWorkspace(nextWorkspace, requestId);
+        void persistWorkspace(nextWorkspace, requestId, "autosave");
       }, autoSaveDelayMs);
     },
     [autoSaveDelayMs, persistWorkspace, persistenceMode],
@@ -287,7 +317,7 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
     const requestId = saveRequestIdRef.current + 1;
     saveRequestIdRef.current = requestId;
     setHasPendingSave(true);
-    return await persistWorkspace(current, requestId);
+    return await persistWorkspace(current, requestId, "manual");
   }, [persistWorkspace, showAppError]);
 
   const applyWorkspaceUpdate = useCallback(
@@ -387,7 +417,7 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
     [applyWorkspaceUpdate],
   );
 
-  const compileSource = useCallback((workspaceState?: WorkspaceState) => {
+  const compileSource = useCallback(async (workspaceState?: WorkspaceState) => {
     const currentWorkspace = workspaceState ?? workspaceRef.current;
     if (!currentWorkspace) {
       return null;
@@ -397,13 +427,21 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
     if (!document) {
       return null;
     }
-    return {
-      document,
-      result: compilePseudocode({
+    const cacheKey = getCompileCacheKey(document.id, document.name, document.source);
+    const compileRun = await compilePseudocodeInWorker(
+      {
         source: document.source,
         filename: document.name,
         strict: true,
-      }),
+      },
+      cacheKey,
+    );
+
+    return {
+      document,
+      result: compileRun.result,
+      stale: compileRun.stale,
+      cached: compileRun.cached,
     };
   }, []);
 
@@ -425,15 +463,19 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
     };
   }, [applyWorkspaceUpdate]);
 
-  const compileNow = useCallback(() => {
+  const compileNow = useCallback(async () => {
     const target = ensureTerminalTarget();
     if (!target) {
       return null;
     }
 
-    const payload = compileSource(target.workspace);
+    const payload = await compileSource(target.workspace);
     if (!payload) {
       updateTerminalOutput(target.panelId, "Create your first file to compile and run code.");
+      return null;
+    }
+
+    if (payload.stale) {
       return null;
     }
 
@@ -463,9 +505,13 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
       return;
     }
 
-    const payload = compileSource(target.workspace);
+    const payload = await compileSource(target.workspace);
     if (!payload) {
       updateTerminalOutput(target.panelId, "Create your first file to compile and run code.");
+      return;
+    }
+
+    if (payload.stale) {
       return;
     }
 
@@ -577,6 +623,15 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
     waitForTerminalInput,
   ]);
 
+  const preloadRunRuntime = useCallback(() => {
+    preloadPseudocodeCompiler();
+    if (typeof pythonRunner.preload === "function") {
+      void pythonRunner.preload().catch(() => {
+        /* Runtime errors are shown when the user runs code. */
+      });
+    }
+  }, []);
+
   const selectDocument = useCallback(
     (documentId: string) => {
       applyWorkspaceUpdate((current) => openDocumentInFocusedEditor(current, documentId), "immediate");
@@ -644,15 +699,20 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
         source?: string;
       },
     ) => {
-      applyWorkspaceUpdate(
-        (current) =>
-          createDocument(current, {
+      let createdDocumentId: string | null = null;
+      const nextWorkspace = applyWorkspaceUpdate(
+        (current) => {
+          const next = createDocument(current, {
             parentId: parentId && workspaceHasFolder(current, parentId) ? parentId : current.rootFolderId,
             name: options?.name,
             source: options?.source ?? "",
-          }),
+          });
+          createdDocumentId = next.activeDocumentId;
+          return next;
+        },
         "immediate",
       );
+      return createdDocumentId ? nextWorkspace?.nodes[createdDocumentId] ?? null : null;
     },
     [applyWorkspaceUpdate],
   );
@@ -826,6 +886,7 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
     cancelPendingInput: () => resolvePendingInput(null),
     compileNow,
     runNow,
+    preloadRunRuntime,
     saveWorkspaceNow,
     clearTerminal,
     selectDocument,

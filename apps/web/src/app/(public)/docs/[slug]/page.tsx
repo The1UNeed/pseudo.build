@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ExternalLink } from "lucide-react";
+import { PublicHeader } from "@/app/components/PublicHeader";
 import { docs, getDoc, siteUrl } from "@/lib/seo-content";
 
 type PageProps = {
@@ -69,6 +70,7 @@ export default async function DocPage({ params }: PageProps) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
+      <PublicHeader active="docs" />
       <article className="mx-auto max-w-3xl px-5 py-10 md:py-16">
         <Link href="/docs" className="inline-flex items-center gap-2 text-sm font-black text-[#0b6e4f]">
           <ArrowLeft size={16} /> Docs

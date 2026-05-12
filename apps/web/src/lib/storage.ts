@@ -14,6 +14,7 @@ const DEV_RESET_SESSION_KEY = "igcse-reset-workspace-on-dev-applied";
 interface WorkspaceStorageOptions {
   mode?: WorkspacePersistenceMode;
   syncToCloud?: boolean;
+  getAuthToken?: () => Promise<string | null>;
 }
 
 interface CloudWorkspaceResponse {
@@ -58,10 +59,16 @@ export async function loadWorkspace(
   }
 
   if (mode === "cloud") {
-    const cloudWorkspace = await loadWorkspaceFromCloud(sampleSource);
+    const cloudWorkspace = await loadWorkspaceFromCloud(sampleSource, options.getAuthToken);
     if (cloudWorkspace) {
       return cloudWorkspace;
     }
+
+    const localWorkspace = await migrateWorkspace(sampleSource);
+    void saveWorkspaceToCloud(localWorkspace, options.getAuthToken).catch(() => {
+      /* Keep local cache usable even when an initial cloud backfill fails. */
+    });
+    return localWorkspace;
   }
 
   return migrateWorkspace(sampleSource);
@@ -81,9 +88,7 @@ export async function saveWorkspace(
   await database.put(STORE_NAME, state, PRIMARY_KEY);
 
   if (mode === "cloud") {
-    void saveWorkspaceToCloud(state).catch(() => {
-      /* Browser storage is the primary save target; cloud sync is best-effort. */
-    });
+    await saveWorkspaceToCloud(state, options.getAuthToken);
   }
 }
 
@@ -130,7 +135,25 @@ export async function migrateWorkspace(sampleSource: string): Promise<WorkspaceS
   return state;
 }
 
-async function loadWorkspaceFromCloud(sampleSource: string): Promise<WorkspaceState | null> {
+async function getCloudRequestHeaders(
+  baseHeaders: HeadersInit,
+  getAuthToken?: () => Promise<string | null>,
+): Promise<HeadersInit> {
+  const token = getAuthToken ? await getAuthToken() : null;
+  if (!token) {
+    return baseHeaders;
+  }
+
+  return {
+    ...baseHeaders,
+    Authorization: `Bearer ${token}`,
+  };
+}
+
+async function loadWorkspaceFromCloud(
+  sampleSource: string,
+  getAuthToken?: () => Promise<string | null>,
+): Promise<WorkspaceState | null> {
   if (typeof window === "undefined") {
     return null;
   }
@@ -139,9 +162,9 @@ async function loadWorkspaceFromCloud(sampleSource: string): Promise<WorkspaceSt
     const response = await fetch("/api/workspace", {
       method: "GET",
       credentials: "same-origin",
-      headers: {
+      headers: await getCloudRequestHeaders({
         Accept: "application/json",
-      },
+      }, getAuthToken),
     });
 
     if (!response.ok) {
@@ -162,17 +185,28 @@ async function loadWorkspaceFromCloud(sampleSource: string): Promise<WorkspaceSt
   }
 }
 
-async function saveWorkspaceToCloud(state: WorkspaceState): Promise<void> {
+async function saveWorkspaceToCloud(
+  state: WorkspaceState,
+  getAuthToken?: () => Promise<string | null>,
+): Promise<void> {
   const response = await fetch("/api/workspace", {
     method: "PUT",
     credentials: "same-origin",
-    headers: {
+    headers: await getCloudRequestHeaders({
       "Content-Type": "application/json",
-    },
+    }, getAuthToken),
     body: JSON.stringify({ workspace: state }),
   });
 
   if (!response.ok) {
-    throw new Error("Unable to save workspace to Convex.");
+    let errorDetail = "";
+    try {
+      const body = (await response.json()) as { error?: unknown };
+      errorDetail = typeof body.error === "string" ? ` ${body.error}` : "";
+    } catch {
+      errorDetail = "";
+    }
+
+    throw new Error(`Unable to save workspace to Convex.${errorDetail}`);
   }
 }

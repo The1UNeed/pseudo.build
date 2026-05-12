@@ -74,6 +74,8 @@ const CONTEXT_MENU_WIDTH = 248;
 const CONTEXT_MENU_HEIGHT = 320;
 const CONTEXT_MENU_MARGIN = 14;
 const EXPLORER_RELEASE_LABEL = `${packageJson.version}-Preveiw`;
+const DRAG_EDGE_SCROLL_ZONE = 34;
+const DRAG_EDGE_SCROLL_STEP = 14;
 
 const contextMenuButtonClassName =
   "block w-full appearance-none rounded-lg border-0 bg-transparent px-3 py-2 text-left text-sm transition hover:bg-[var(--hover)] disabled:cursor-not-allowed";
@@ -177,6 +179,8 @@ export function WorkspaceSidebar({
   const suppressClickRef = useRef(false);
   const suppressClickTimerRef = useRef<number | null>(null);
   const treeContainerRef = useRef<HTMLDivElement | null>(null);
+  const dropHintFrameRef = useRef<number | null>(null);
+  const pendingDropHintRef = useRef<DropHint | null>(null);
 
   const selectedNodeIds = useMemo(() => {
     const nextSelection = visibleNodeIds.filter((nodeId) => selectionState.includes(nodeId));
@@ -230,6 +234,9 @@ export function WorkspaceSidebar({
       if (suppressClickTimerRef.current !== null) {
         window.clearTimeout(suppressClickTimerRef.current);
       }
+      if (dropHintFrameRef.current !== null) {
+        window.cancelAnimationFrame(dropHintFrameRef.current);
+      }
     },
     [],
   );
@@ -263,6 +270,56 @@ export function WorkspaceSidebar({
     }
     pointerGestureRef.current = null;
     dragPointerIdRef.current = null;
+  };
+
+  const scheduleDropHint = (hint: DropHint | null) => {
+    pendingDropHintRef.current = hint;
+    if (dropHintFrameRef.current !== null) {
+      return;
+    }
+
+    dropHintFrameRef.current = window.requestAnimationFrame(() => {
+      dropHintFrameRef.current = null;
+      const nextHint = pendingDropHintRef.current;
+      setDropHint((currentHint) => {
+        if (
+          currentHint?.nodeId === nextHint?.nodeId &&
+          currentHint?.position === nextHint?.position
+        ) {
+          return currentHint;
+        }
+        return nextHint;
+      });
+    });
+  };
+
+  const cancelFolderExpandTimer = () => {
+    if (expandHoverTimerRef.current !== null) {
+      window.clearTimeout(expandHoverTimerRef.current);
+      expandHoverTimerRef.current = null;
+    }
+    expandHoverFolderIdRef.current = null;
+  };
+
+  const autoScrollTreeDuringDrag = (clientY: number) => {
+    const container = treeContainerRef.current;
+    if (!container) {
+      return;
+    }
+
+    const bounds = container.getBoundingClientRect();
+    if (clientY < bounds.top || clientY > bounds.bottom) {
+      return;
+    }
+
+    if (clientY - bounds.top < DRAG_EDGE_SCROLL_ZONE) {
+      container.scrollTop -= DRAG_EDGE_SCROLL_STEP;
+      return;
+    }
+
+    if (bounds.bottom - clientY < DRAG_EDGE_SCROLL_ZONE) {
+      container.scrollTop += DRAG_EDGE_SCROLL_STEP;
+    }
   };
 
   const suppressNextClick = () => {
@@ -382,6 +439,7 @@ export function WorkspaceSidebar({
   };
 
   const resolvePointDropHint = (clientX: number, clientY: number, draggedNodeIds: string[]): DropHint | null => {
+    autoScrollTreeDuringDrag(clientY);
     const rowElement = document.elementFromPoint(clientX, clientY)?.closest("[data-workspace-row-id]") as HTMLElement | null;
     const targetNodeId = rowElement?.dataset.workspaceRowId;
     if (targetNodeId) {
@@ -389,6 +447,8 @@ export function WorkspaceSidebar({
       if (targetNode && canDropOnNode(targetNode.id, draggedNodeIds)) {
         if (targetNode.type === "folder") {
           scheduleFolderExpand(targetNode.id);
+        } else {
+          cancelFolderExpandTimer();
         }
         return {
           nodeId: targetNode.id,
@@ -409,12 +469,14 @@ export function WorkspaceSidebar({
       clientY >= treeBounds.top &&
       clientY <= treeBounds.bottom
     ) {
+      cancelFolderExpandTimer();
       return {
         nodeId: workspace.rootFolderId,
         position: "inside",
       };
     }
 
+    cancelFolderExpandTimer();
     return null;
   };
 
@@ -508,7 +570,7 @@ export function WorkspaceSidebar({
   const handleRowPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (dragPointerIdRef.current === event.pointerId) {
       event.preventDefault();
-      setDropHint(resolvePointDropHint(event.clientX, event.clientY, draggingNodeIdsRef.current));
+      scheduleDropHint(resolvePointDropHint(event.clientX, event.clientY, draggingNodeIdsRef.current));
       return;
     }
 
@@ -531,7 +593,7 @@ export function WorkspaceSidebar({
     if (movedPastThreshold) {
       event.preventDefault();
       startPointerDrag(pointerGesture.nodeId, event.pointerId);
-      setDropHint(resolvePointDropHint(event.clientX, event.clientY, draggingNodeIdsRef.current));
+      scheduleDropHint(resolvePointDropHint(event.clientX, event.clientY, draggingNodeIdsRef.current));
     }
   };
 
@@ -561,11 +623,12 @@ export function WorkspaceSidebar({
   };
 
   const clearDragState = () => {
-    if (expandHoverTimerRef.current !== null) {
-      window.clearTimeout(expandHoverTimerRef.current);
-      expandHoverTimerRef.current = null;
+    cancelFolderExpandTimer();
+    if (dropHintFrameRef.current !== null) {
+      window.cancelAnimationFrame(dropHintFrameRef.current);
+      dropHintFrameRef.current = null;
     }
-    expandHoverFolderIdRef.current = null;
+    pendingDropHintRef.current = null;
     draggingNodeIdsRef.current = [];
     dragPointerIdRef.current = null;
     setDropHint(null);
@@ -724,10 +787,13 @@ export function WorkspaceSidebar({
     event.preventDefault();
     event.stopPropagation();
     event.dataTransfer.dropEffect = "move";
+    autoScrollTreeDuringDrag(event.clientY);
     if (targetNode.type === "folder") {
       scheduleFolderExpand(targetNode.id);
+    } else {
+      cancelFolderExpandTimer();
     }
-    setDropHint({
+    scheduleDropHint({
       nodeId: targetNode.id,
       position: deriveDropPosition(event, targetNode),
     });
@@ -759,7 +825,9 @@ export function WorkspaceSidebar({
 
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
-    setDropHint({
+    autoScrollTreeDuringDrag(event.clientY);
+    cancelFolderExpandTimer();
+    scheduleDropHint({
       nodeId: workspace.rootFolderId,
       position: "inside",
     });
@@ -872,7 +940,7 @@ export function WorkspaceSidebar({
                   onDragEnd={clearDragState}
                   onDragOver={(event) => handleDragOver(event, node)}
                   onDrop={(event) => handleDrop(event, node)}
-                  className={`flex h-7 items-center gap-1.5 rounded-lg transition ${
+                  className={`flex h-7 touch-pan-y select-none items-center gap-1.5 rounded-lg transition ${
                     isSelected
                       ? "bg-[var(--selected)]"
                       : isDropTarget && dropHint?.position === "inside"

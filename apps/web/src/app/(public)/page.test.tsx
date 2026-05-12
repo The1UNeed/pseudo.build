@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createContext, useState } from "react";
 import { createDefaultWorkspace, createDocument, createEmptyWorkspace, createFolder, getChildNodes, setActiveDocument, type WorkspaceState } from "@igcse/workspace";
 import type { WorkspacePersistenceMode } from "@/lib/platform";
 
@@ -20,6 +21,8 @@ const { loadWorkspaceMock, saveWorkspaceMock, compilePseudocodeMock, runMock, au
 }));
 const localStore = new Map<string, string>();
 const FLOWCHART_MODE_STORAGE_KEY = "pseudocode-compiler-flowchart-mode-enabled";
+const UserButtonContext = createContext({ openSettings: () => {} });
+const UserButtonProfilePageContext = createContext(false);
 
 vi.mock("next/link", () => ({
   default: ({ children, href, ...props }: { children: React.ReactNode; href: string }) => (
@@ -40,8 +43,64 @@ vi.mock("@/lib/auth-components", () => ({
   isCloudAuthConfigured: () => true,
   SignInButton: ({ children }: { children: React.ReactNode }) => children,
   SignUpButton: ({ children }: { children: React.ReactNode }) => children,
-  UserButton: () => <button type="button" aria-label="User profile" />,
+  UserButton: Object.assign(
+    ({ children }: { children?: React.ReactNode }) => {
+      const [settingsOpen, setSettingsOpen] = useState(false);
+
+      return (
+        <UserButtonContext.Provider value={{ openSettings: () => setSettingsOpen(true) }}>
+          <UserButtonProfilePageContext.Provider value={false}>
+            <button type="button" aria-label="User profile" />
+            {children}
+          </UserButtonProfilePageContext.Provider>
+          {settingsOpen ? (
+            <div role="dialog" aria-label="Settings">
+              <UserButtonProfilePageContext.Provider value={true}>
+                {children}
+              </UserButtonProfilePageContext.Provider>
+            </div>
+          ) : null}
+        </UserButtonContext.Provider>
+      );
+    },
+    {
+      Action: ({
+        label,
+        labelIcon,
+        onClick,
+      }: {
+        label: string;
+        labelIcon?: React.ReactNode;
+        onClick?: () => void;
+      }) =>
+        label === "manageAccount" ? (
+          <UserButtonContext.Consumer>
+            {({ openSettings }) => (
+              <button type="button" onClick={openSettings}>
+                Settings
+              </button>
+            )}
+          </UserButtonContext.Consumer>
+        ) : onClick ? (
+          <button type="button" onClick={onClick}>
+            {labelIcon}
+            {label}
+          </button>
+        ) : null,
+      MenuItems: ({ children }: { children: React.ReactNode }) => (
+        <UserButtonProfilePageContext.Consumer>
+          {(renderProfilePage) => (renderProfilePage ? null : <>{children}</>)}
+        </UserButtonProfilePageContext.Consumer>
+      ),
+      UserProfilePage: ({ children }: { children: React.ReactNode }) => (
+        <UserButtonProfilePageContext.Consumer>
+          {(renderProfilePage) => (renderProfilePage ? <>{children}</> : null)}
+        </UserButtonProfilePageContext.Consumer>
+      ),
+    },
+  ),
   useAuth: () => ({
+    getToken: async () => "session-token",
     isLoaded: !authState.loading,
     isSignedIn: Boolean(authState.user),
     userId: authState.user?.id ?? null,
@@ -254,20 +313,21 @@ describe("HomePage workspace flow", () => {
     });
   });
 
-  it("creates and renames documents while persisting tree changes", async () => {
+  it("uses the shared create file dialog from the sidebar while keeping the pseudo extension fixed", async () => {
     loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
     render(<HomePage />);
     await screen.findByRole("textbox", { name: "Mock editor" });
 
     fireEvent.click(getExplorerHeaderButton("Create File"));
-    await waitFor(() => {
-      expect(getExplorerButton("Untitled.pseudo")).toBeInTheDocument();
-    });
+    const createDialog = await screen.findByRole("dialog", { name: "Create New File" });
 
-    fireEvent.contextMenu(getExplorerButton("Untitled.pseudo"));
-    fireEvent.click(await screen.findByRole("button", { name: "Rename" }));
-    fireEvent.change(screen.getByLabelText("Item name"), { target: { value: "Renamed Doc" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save Name" }));
+    const nameInput = within(createDialog).getByLabelText("File name");
+    expect(nameInput).toHaveValue("Untitled");
+    expect(within(createDialog).getByText(".pseudo")).toBeInTheDocument();
+
+    fireEvent.change(nameInput, { target: { value: "Renamed Doc.pseudo" } });
+    expect(nameInput).toHaveValue("Renamed Doc");
+    fireEvent.click(within(createDialog).getByRole("button", { name: "Create File" }));
     await waitFor(() => {
       expect(getExplorerButton("Renamed Doc.pseudo")).toBeInTheDocument();
     });
@@ -360,6 +420,7 @@ describe("HomePage workspace flow", () => {
   });
 
   it("requires enabling Flowchart mode beta from settings before opening it", async () => {
+    authState.user = null;
     loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
     render(<HomePage />);
 
@@ -699,7 +760,10 @@ describe("HomePage workspace flow", () => {
         vi.advanceTimersByTime(1);
         await Promise.resolve();
       });
-      expect(saveWorkspaceMock).toHaveBeenCalledWith(expect.anything(), { mode: "cloud" });
+      expect(saveWorkspaceMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ mode: "cloud" }),
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -789,9 +853,74 @@ describe("HomePage workspace flow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save workspace" }));
 
     await waitFor(() => {
-      expect(saveWorkspaceMock).toHaveBeenCalledWith(expect.anything(), { mode: "cloud" });
+      expect(saveWorkspaceMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ mode: "cloud" }),
+      );
     });
 
     expect(screen.getByRole("button", { name: "User profile" })).toBeInTheDocument();
+  });
+
+  it("shows a loading save control while autosave is in progress", async () => {
+    let resolveSave: (() => void) | null = null;
+    saveWorkspaceMock.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
+    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+    render(<HomePage />);
+
+    const editor = await screen.findByRole("textbox", { name: "Mock editor" });
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.change(editor, { target: { value: 'OUTPUT "Autosaving"' } });
+
+      await act(async () => {
+        vi.advanceTimersByTime(5 * 60 * 1000);
+        await Promise.resolve();
+      });
+
+      expect(screen.getAllByText("Saving").length).toBeGreaterThan(0);
+
+      await act(async () => {
+        resolveSave?.();
+        await Promise.resolve();
+      });
+
+      expect(screen.queryAllByText("Saving")).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows saved after a successful manual save", async () => {
+    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+    saveWorkspaceMock.mockResolvedValue();
+    render(<HomePage />);
+
+    await screen.findByRole("textbox", { name: "Mock editor" });
+    fireEvent.click(screen.getByRole("button", { name: "Save workspace" }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Saved").length).toBeGreaterThan(0);
+    });
+  });
+
+  it("shows an error after a failed manual save", async () => {
+    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+    saveWorkspaceMock.mockRejectedValue(new Error("Convex unavailable"));
+    render(<HomePage />);
+
+    await screen.findByRole("textbox", { name: "Mock editor" });
+    fireEvent.click(screen.getByRole("button", { name: "Save workspace" }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Save failed").length).toBeGreaterThan(0);
+    });
+    expect(screen.getByText("Save failed. Changes remain on this device.")).toBeInTheDocument();
   });
 });
