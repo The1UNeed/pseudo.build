@@ -116,8 +116,8 @@ vi.mock("@/compiler", () => ({
   compilePseudocode: compilePseudocodeMock,
 }));
 
-vi.mock("@/runtime/executePython", () => ({
-  pythonRunner: {
+vi.mock("@/runtime/executeRuntime", () => ({
+  pseudocodeRuntimeRunner: {
     run: runMock,
   },
 }));
@@ -395,7 +395,7 @@ describe("HomePage workspace flow", () => {
     compilePseudocodeMock.mockReturnValue({
       success: true,
       diagnostics: [],
-      pythonCode: "print('flowchart')",
+      astJson: "{}",
     });
     runMock.mockResolvedValue({
       success: true,
@@ -590,7 +590,7 @@ describe("HomePage workspace flow", () => {
     compilePseudocodeMock.mockReturnValue({
       success: true,
       diagnostics: [],
-      pythonCode: "print('hi')",
+      astJson: "{}",
     });
     runMock.mockResolvedValue({
       success: false,
@@ -625,7 +625,7 @@ describe("HomePage workspace flow", () => {
     compilePseudocodeMock.mockReturnValue({
       success: true,
       diagnostics: [],
-      pythonCode: "print('hi')",
+      astJson: "{}",
     });
     runMock
       .mockResolvedValueOnce({

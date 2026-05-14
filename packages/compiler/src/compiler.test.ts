@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { compilePseudocode } from "./index";
 
 describe("compilePseudocode", () => {
-  it("compiles valid IGCSE pseudocode into Python", () => {
+  it("compiles valid IGCSE pseudocode into AST JSON", () => {
     const source = `DECLARE Total : INTEGER
 DECLARE Index : INTEGER
 FOR Index <- 1 TO 3
@@ -13,8 +13,8 @@ OUTPUT Total`;
     const result = compilePseudocode({ source, filename: "main.pseudo", strict: true });
 
     expect(result.success).toBe(true);
-    expect(result.pythonCode).toContain("for Index in __inclusive_range(1, 3, 1):");
-    expect(result.pythonCode).toContain("__output(Total)");
+    expect(result.astJson).toContain('"kind": "for"');
+    expect(result.astJson).toContain('"kind": "output"');
   });
 
   it("returns syntax diagnostics for malformed IF blocks", () => {

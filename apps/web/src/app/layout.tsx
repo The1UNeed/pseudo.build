@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 
@@ -58,6 +59,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const shouldRenderAnalytics = process.env.VERCEL === "1" || Boolean(process.env.VERCEL_ENV);
   const shouldRenderSpeedInsights = process.env.VERCEL === "1" || Boolean(process.env.VERCEL_ENV);
   const themeBootScript = `(() => {
     try {
@@ -81,6 +83,7 @@ export default async function RootLayout({
       </head>
       <body className="antialiased">
         {children}
+        {shouldRenderAnalytics ? <Analytics /> : null}
         {shouldRenderSpeedInsights ? <SpeedInsights /> : null}
       </body>
     </html>

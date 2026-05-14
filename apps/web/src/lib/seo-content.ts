@@ -3,7 +3,7 @@ export const siteUrl = "https://pseudoeditor.dev";
 export const productName = "PseudoEditor";
 
 export const productTagline =
-  "A browser pseudocode editor, compiler, flowchart helper, and Python runner for IGCSE-style pseudocode practice.";
+  "A browser pseudocode editor, compiler, flowchart helper, and fast runtime for IGCSE-style pseudocode practice.";
 
 export type SeoDoc = {
   slug: string;
@@ -35,7 +35,7 @@ export const docs: SeoDoc[] = [
     slug: "getting-started",
     title: "Getting started with PseudoEditor",
     description:
-      "Open the browser editor, write your first pseudocode program, compile it, and run the generated Python output.",
+      "Open the browser editor, write your first pseudocode program, compile it, and run it directly in the browser.",
     updated: "2026-05-04",
     sections: [
       {
@@ -357,7 +357,7 @@ export const faqItems = [
   {
     question: "Can I run pseudocode in the browser?",
     answer:
-      "Yes. PseudoEditor compiles supported pseudocode to Python and runs it in the browser runtime, including interactive INPUT prompts.",
+      "Yes. PseudoEditor compiles supported pseudocode to an AST and runs it in the browser runtime, including interactive INPUT prompts.",
   },
   {
     question: "Does the browser version save my work?",

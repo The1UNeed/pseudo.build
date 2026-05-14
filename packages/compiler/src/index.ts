@@ -1,5 +1,4 @@
 import { analyzeProgram } from "./semantics";
-import { generatePythonCode } from "./codegen";
 import { parseSource } from "./parser";
 import { CompileRequest, CompileResult } from "./types";
 
@@ -23,12 +22,9 @@ export function compilePseudocode(request: CompileRequest): CompileResult {
     };
   }
 
-  const pythonCode = generatePythonCode(ast, semanticResult);
-
   return {
     success: true,
     diagnostics,
     astJson: JSON.stringify(ast, null, 2),
-    pythonCode,
   };
 }

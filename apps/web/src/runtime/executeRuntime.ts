@@ -1,6 +1,6 @@
 import { RunRequest, RunResult } from "@/compiler/types";
 
-export type PythonRunnerStatus = "idle" | "loading" | "ready" | "running" | "error";
+export type PseudocodeRuntimeStatus = "idle" | "loading" | "ready" | "running" | "error";
 
 interface PendingRequest {
   resolve: (result: RunResult) => void;
@@ -23,7 +23,7 @@ type WorkerMessage = WorkerRunResponse | WorkerStatusMessage;
 const DEFAULT_EXECUTION_TIMEOUT_MS = 12_000;
 const INITIALIZATION_TIMEOUT_MS = 45_000;
 
-export class PythonRunner {
+export class PseudocodeRuntimeRunner {
   private worker: Worker | null = null;
   private nextId = 1;
   private pending = new Map<number, PendingRequest>();
@@ -32,10 +32,10 @@ export class PythonRunner {
   private preloadResolve: (() => void) | null = null;
   private preloadReject: ((error: Error) => void) | null = null;
   private runtimeReady = false;
-  private status: PythonRunnerStatus = "idle";
-  private statusListeners = new Set<(status: PythonRunnerStatus) => void>();
+  private status: PseudocodeRuntimeStatus = "idle";
+  private statusListeners = new Set<(status: PseudocodeRuntimeStatus) => void>();
 
-  private setStatus(status: PythonRunnerStatus) {
+  private setStatus(status: PseudocodeRuntimeStatus) {
     if (this.status === status) {
       return;
     }
@@ -50,7 +50,7 @@ export class PythonRunner {
       return this.worker;
     }
 
-    this.worker = new Worker(new URL("../workers/pythonRunner.worker.ts", import.meta.url));
+    this.worker = new Worker(new URL("../workers/wasmRuntime.worker.ts", import.meta.url));
 
     this.worker.onmessage = (event: MessageEvent<WorkerMessage>) => {
       if (event.data.kind === "runtime-status") {
@@ -71,7 +71,7 @@ export class PythonRunner {
       if (!pending) {
         if (id === this.preloadId && !result.success) {
           const error = new Error(
-            result.stderr || result.diagnostics[0]?.message || "Python runtime preload failed.",
+            result.stderr || result.diagnostics[0]?.message || "Pseudocode runtime preload failed.",
           );
           this.preloadReject?.(error);
           this.preloadId = null;
@@ -88,7 +88,7 @@ export class PythonRunner {
     };
 
     this.worker.onerror = (event) => {
-      const error = new Error(event.message || "Python worker crashed.");
+      const error = new Error(event.message || "Pseudocode runtime worker crashed.");
       this.preloadReject?.(error);
       this.preloadId = null;
       this.preloadResolve = null;
@@ -145,13 +145,13 @@ export class PythonRunner {
           stdout: "",
           stderr: runtimeInitialized
             ? "Execution timed out."
-            : "Python runtime initialization timed out.",
+            : "Pseudocode runtime initialization timed out.",
           diagnostics: [
             {
               code: runtimeInitialized ? "RUN408" : "RUN409",
               message: runtimeInitialized
                 ? `Execution exceeded ${effectiveTimeoutMs / 1000} seconds and was stopped.`
-                : `Python runtime initialization exceeded ${effectiveTimeoutMs / 1000} seconds.`,
+                : `Pseudocode runtime initialization exceeded ${effectiveTimeoutMs / 1000} seconds.`,
               severity: "error",
               line: 1,
               column: 1,
@@ -159,7 +159,7 @@ export class PythonRunner {
               endColumn: 1,
               hint: runtimeInitialized
                 ? "Check for infinite loops or large computations."
-                : "The first run downloads Python runtime files. Check your internet connection and retry.",
+                : "The Rust WASM runtime did not initialize. Reload and retry.",
             },
           ],
           virtualFiles: request.virtualFiles,
@@ -222,11 +222,11 @@ export class PythonRunner {
     return this.preloadPromise;
   }
 
-  getStatus(): PythonRunnerStatus {
+  getStatus(): PseudocodeRuntimeStatus {
     return this.status;
   }
 
-  subscribe(listener: (status: PythonRunnerStatus) => void): () => void {
+  subscribe(listener: (status: PseudocodeRuntimeStatus) => void): () => void {
     this.statusListeners.add(listener);
     listener(this.status);
     return () => {
@@ -235,4 +235,4 @@ export class PythonRunner {
   }
 }
 
-export const pythonRunner = new PythonRunner();
+export const pseudocodeRuntimeRunner = new PseudocodeRuntimeRunner();

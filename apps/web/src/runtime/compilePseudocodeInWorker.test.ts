@@ -27,7 +27,6 @@ const successResult: CompileResult = {
   success: true,
   diagnostics: [],
   astJson: "{}",
-  pythonCode: "print('ok')",
 };
 
 describe("compilePseudocodeInWorker", () => {

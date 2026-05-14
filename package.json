@@ -12,6 +12,8 @@
     "test": "pnpm -r --if-present run test",
     "test:compiler": "pnpm --filter @igcse/compiler test",
     "test:web": "pnpm --filter @pseudoeditor/web test",
+    "build:runtime": "./scripts/build-runtime-wasm.sh",
+    "test:runtime": "cargo test -p pseudocode-runtime",
     "typecheck": "pnpm -r --if-present run typecheck",
     "lint": "pnpm -r --if-present run lint"
   },

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { PythonRunner } from "./executePython";
+import { PseudocodeRuntimeRunner } from "./executeRuntime";
 
 class MockWorker {
   static instances: MockWorker[] = [];
@@ -23,14 +23,14 @@ class MockWorker {
   }
 }
 
-describe("PythonRunner", () => {
+describe("PseudocodeRuntimeRunner", () => {
   beforeEach(() => {
     MockWorker.instances = [];
     vi.stubGlobal("Worker", MockWorker);
   });
 
   it("preloads the runtime explicitly and reports ready status", async () => {
-    const runner = new PythonRunner();
+    const runner = new PseudocodeRuntimeRunner();
     const statuses: string[] = [];
     runner.subscribe((status) => statuses.push(status));
 
@@ -48,9 +48,9 @@ describe("PythonRunner", () => {
   });
 
   it("starts loading on the first run instead of requiring eager initialization", async () => {
-    const runner = new PythonRunner();
+    const runner = new PseudocodeRuntimeRunner();
     const run = runner.run({
-      pythonCode: "print('ok')",
+      astJson: "{}",
       stdinLines: [],
       virtualFiles: {},
     });
@@ -61,7 +61,7 @@ describe("PythonRunner", () => {
         kind: "run",
         id: 1,
         request: {
-          pythonCode: "print('ok')",
+          astJson: "{}",
           stdinLines: [],
           virtualFiles: {},
         },

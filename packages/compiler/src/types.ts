@@ -21,11 +21,10 @@ export interface CompileResult {
   success: boolean;
   diagnostics: Diagnostic[];
   astJson?: string;
-  pythonCode?: string;
 }
 
 export interface RunRequest {
-  pythonCode: string;
+  astJson: string;
   stdinLines: string[];
   virtualFiles: Record<string, string[]>;
 }

@@ -31,8 +31,8 @@ const features = [
   },
   {
     icon: Play,
-    title: "Python execution",
-    body: "Run generated Python directly in the browser terminal, including interactive INPUT programs.",
+    title: "Fast browser execution",
+    body: "Run pseudocode directly in the browser terminal, including interactive INPUT programs.",
   },
   {
     icon: GitBranch,

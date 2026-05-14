@@ -35,7 +35,7 @@ import {
 import type { Diagnostic } from "@/compiler/types";
 import { loadWorkspace, saveWorkspace } from "@/lib/storage";
 import type { WorkspacePersistenceMode } from "@/lib/platform";
-import { pythonRunner } from "@/runtime/executePython";
+import { pseudocodeRuntimeRunner } from "@/runtime/executeRuntime";
 import {
   compilePseudocodeInWorker,
   getCompileCacheKey,
@@ -519,11 +519,12 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
     setCompileDiagnostics(compileResult.diagnostics);
     updateWorkspaceCompileSummary(document.id, compileResult.diagnostics);
 
-    if (!compileResult.success || !compileResult.pythonCode) {
+    if (!compileResult.success || !compileResult.astJson) {
       updateTerminalOutput(target.panelId, `Compile failed for ${document.name}.\n\n${formatDiagnostics(compileResult.diagnostics)}`);
       return;
     }
 
+    const astJson = compileResult.astJson;
     setIsRunning(true);
     setRunningTerminalPanelId(target.panelId);
     updateTerminalOutput(target.panelId, "");
@@ -557,8 +558,8 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
     };
 
     try {
-      let runResult = await pythonRunner.run({
-        pythonCode: compileResult.pythonCode,
+      let runResult = await pseudocodeRuntimeRunner.run({
+        astJson,
         stdinLines: [...stdinLines],
         virtualFiles: latestVirtualFiles,
       });
@@ -586,8 +587,8 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
         transcript.push(`${TERMINAL_PROMPT} ${nextInput}`);
         updateTerminalOutput(target.panelId, transcript.join("\n"));
 
-        runResult = await pythonRunner.run({
-          pythonCode: compileResult.pythonCode,
+        runResult = await pseudocodeRuntimeRunner.run({
+          astJson,
           stdinLines: [...stdinLines],
           virtualFiles: latestVirtualFiles,
         });
@@ -625,8 +626,8 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
 
   const preloadRunRuntime = useCallback(() => {
     preloadPseudocodeCompiler();
-    if (typeof pythonRunner.preload === "function") {
-      void pythonRunner.preload().catch(() => {
+    if (typeof pseudocodeRuntimeRunner.preload === "function") {
+      void pseudocodeRuntimeRunner.preload().catch(() => {
         /* Runtime errors are shown when the user runs code. */
       });
     }
