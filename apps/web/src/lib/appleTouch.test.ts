@@ -64,4 +64,16 @@ describe("appleTouch platform helpers", () => {
     expect(getPseudocodeEditorOptions(true).editContext).toBe(false);
     expect(getPseudocodeEditorOptions(false).editContext).toBe(true);
   });
+
+  it("uses stable Monaco scrolling options for long documents", () => {
+    const desktopOptions = getPseudocodeEditorOptions(false);
+    const touchOptions = getPseudocodeEditorOptions(true);
+
+    expect(desktopOptions.smoothScrolling).toBe(true);
+    expect(desktopOptions.stickyScroll).toEqual({ enabled: false });
+    expect(desktopOptions.mouseWheelScrollSensitivity).toBeLessThan(1);
+    expect(touchOptions.mouseWheelScrollSensitivity).toBeLessThan(
+      desktopOptions.mouseWheelScrollSensitivity as number,
+    );
+  });
 });

@@ -12,14 +12,39 @@ import {
   TerminalSquare,
 } from "lucide-react";
 import { PublicHeader } from "@/app/components/PublicHeader";
-import { docs, faqItems, posts, productTagline, siteUrl } from "@/lib/seo-content";
+import {
+  docs,
+  faqItems,
+  homeSeoDescription,
+  homeSeoTitle,
+  organizationName,
+  posts,
+  productName,
+  productTagline,
+  seoKeywords,
+  siteUrl,
+} from "@/lib/seo-content";
 
 export const metadata: Metadata = {
-  title: "PseudoEditor - Browser Pseudocode Compiler",
-  description:
-    "Use PseudoEditor to write, compile, run, debug, and learn IGCSE-style pseudocode in a full browser editor.",
+  title: homeSeoTitle,
+  description: homeSeoDescription,
+  keywords: seoKeywords,
   alternates: {
     canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    url: siteUrl,
+    siteName: productName,
+    title: homeSeoTitle,
+    description: homeSeoDescription,
+    images: [{ url: "/icon.png?v=2", width: 512, height: 512, alt: "PseudoEditor app icon" }],
+  },
+  twitter: {
+    card: "summary",
+    title: homeSeoTitle,
+    description: homeSeoDescription,
+    images: ["/icon.png?v=2"],
   },
 };
 
@@ -50,11 +75,35 @@ const structuredData = [
   {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
-    name: "PseudoEditor",
+    name: productName,
+    alternateName: [
+      "Pseudocode Compiler",
+      "Pseudocode Editor",
+      "IGCSE Pseudocode Compiler",
+      "IGCSE Pseudocode Editor",
+    ],
     applicationCategory: "EducationalApplication",
     operatingSystem: "Web",
     url: siteUrl,
     description: productTagline,
+    creator: {
+      "@type": "Organization",
+      name: organizationName,
+    },
+    publisher: {
+      "@type": "Organization",
+      name: organizationName,
+    },
+    isAccessibleForFree: true,
+    keywords: seoKeywords.join(", "),
+    featureList: [
+      "Pseudocode editor",
+      "Pseudocode compiler",
+      "Browser pseudocode runner",
+      "Line-level compiler diagnostics",
+      "Flowchart support",
+      "IGCSE-style pseudocode practice",
+    ],
     offers: {
       "@type": "Offer",
       price: "0",
@@ -64,8 +113,13 @@ const structuredData = [
   {
     "@context": "https://schema.org",
     "@type": "WebSite",
-    name: "PseudoEditor",
+    name: productName,
+    alternateName: ["PseudoEditor and Compiler", "Pseudocode Editor and Compiler"],
     url: siteUrl,
+    publisher: {
+      "@type": "Organization",
+      name: organizationName,
+    },
     potentialAction: {
       "@type": "SearchAction",
       target: `${siteUrl}/docs?query={search_term_string}`,
@@ -153,13 +207,13 @@ export default function LandingPage() {
         <div className="relative z-10 mx-auto flex min-h-[calc(88vh-80px)] max-w-7xl items-center px-5 pb-20 pt-16 md:px-8">
           <div className="max-w-2xl">
             <p className="mb-5 inline-flex rounded-md border border-white/18 bg-white/8 px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-[#dce8d1]">
-              Browser pseudocode compiler
+              Free pseudocode compiler and editor
             </p>
             <h1 className="text-5xl font-black leading-[1.02] md:text-7xl">
-              PseudoEditor
+              PseudoEditor and Compiler
             </h1>
             <p className="mt-6 max-w-xl text-lg leading-8 text-white/78 md:text-xl">
-              Write, compile, run, and debug IGCSE-style pseudocode in a full browser editor with docs, flowcharts, terminal output, and workspace saving.
+              Built by Lumora Studio, PseudoEditor is a free, open-source pseudocode compiler and editor for writing, running, debugging, and learning IGCSE-style pseudocode anywhere.
             </p>
             <div className="mt-9 flex flex-wrap gap-3">
               <Link

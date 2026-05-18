@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import Editor, { BeforeMount, OnMount } from "@monaco-editor/react";
 import type * as Monaco from "monaco-editor";
+import { LoaderCircle } from "lucide-react";
 import { Diagnostic } from "@/compiler/types";
 import { autoCorrectPseudocodeLine } from "@/app/components/pseudocodeAutocorrect";
 import { isAppleTouchDevice } from "@/lib/appleTouch";
@@ -574,18 +575,9 @@ export function MonacoPseudocodeEditor({
       onMount={handleMount}
       options={editorOptions}
       loading={
-        <div className="flex h-full items-center justify-center bg-[var(--bg)] px-6">
-          <div className="w-full max-w-xl rounded-[var(--radius-3xl)] border border-[var(--separator)] bg-[var(--surface)] p-6">
-            <p className="text-[11px] font-semibold tracking-[0.2em] text-[var(--accent)]">
-              EDITOR
-            </p>
-            <h3 className="mt-3 text-2xl font-semibold text-[var(--text)]">
-              Loading editor…
-            </h3>
-            <p className="mt-3 text-sm leading-6 text-[var(--text2)]">
-              Preparing syntax highlighting, autocomplete, and diagnostics.
-            </p>
-          </div>
+        <div className="flex h-full min-h-[240px] items-center justify-center bg-[var(--bg)] text-sm font-medium text-[var(--text2)]">
+          <LoaderCircle className="mr-2 animate-spin" size={16} />
+          Loading editor
         </div>
       }
     />

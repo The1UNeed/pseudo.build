@@ -2,8 +2,31 @@ export const siteUrl = "https://pseudoeditor.dev";
 
 export const productName = "PseudoEditor";
 
+export const organizationName = "Lumora Studio";
+
+export const homeSeoTitle = "PseudoEditor and Compiler - Pseudocode Editor";
+
+export const homeSeoDescription =
+  "Built by Lumora Studio, PseudoEditor is a free, open-source, cross-platform pseudocode compiler and editor to write, run, debug, and learn IGCSE pseudocode.";
+
+export const seoKeywords = [
+  "PseudoEditor",
+  "pseudocode editor",
+  "pseudocode compiler",
+  "free pseudocode compiler",
+  "open source pseudocode editor",
+  "cross-platform pseudocode editor",
+  "IGCSE pseudocode",
+  "IGCSE pseudocode compiler",
+  "browser pseudocode editor",
+  "browser pseudocode compiler",
+  "pseudo code editor",
+  "pseudo code compiler",
+  "Cambridge pseudocode",
+];
+
 export const productTagline =
-  "A browser pseudocode editor, compiler, flowchart helper, and fast runtime for IGCSE-style pseudocode practice.";
+  "A free, open-source pseudocode compiler and editor for writing, running, debugging, and learning IGCSE-style pseudocode in the browser.";
 
 export type SeoDoc = {
   slug: string;

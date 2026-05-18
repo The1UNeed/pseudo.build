@@ -357,7 +357,18 @@ interface ManualContentProps {
 
 export default function ManualContent({ onClose, isModal = false }: ManualContentProps) {
   return (
-    <main className={`manual-shell ${isModal ? "" : "min-h-screen"} p-4 md:p-6`}>
+    <main className={`manual-shell ${isModal ? "manual-shell-modal" : "min-h-screen"} p-4 md:p-6`}>
+      {isModal ? (
+        <button
+          type="button"
+          onClick={onClose}
+          className="manual-modal-close"
+          aria-label="Close"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          Close
+        </button>
+      ) : null}
       <div className="manual-container mx-auto max-w-6xl space-y-5">
         {/* Hero Card */}
         <ManualCard accent delay={0}>
@@ -374,21 +385,12 @@ export default function ManualContent({ onClose, isModal = false }: ManualConten
                 readable pseudocode.
               </p>
             </div>
-            {isModal ? (
-              <button
-                type="button"
-                onClick={onClose}
-                className="manual-back-btn shrink-0"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                Close
-              </button>
-            ) : (
+            {!isModal ? (
               <Link href="/app" className="manual-back-btn shrink-0">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
                 Open editor
               </Link>
-            )}
+            ) : null}
           </div>
 
           <div className="mt-5 grid gap-3 md:grid-cols-2">

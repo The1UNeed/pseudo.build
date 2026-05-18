@@ -1,41 +1,42 @@
 import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import {
+  homeSeoDescription,
+  homeSeoTitle,
+  organizationName,
+  productName,
+  seoKeywords,
+} from "@/lib/seo-content";
 import "./globals.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://pseudoeditor.dev"),
   title: {
-    default: "PseudoEditor - Browser Pseudocode Compiler",
+    default: homeSeoTitle,
     template: "%s | PseudoEditor",
   },
-  description:
-    "Write, compile, run, and debug IGCSE-style pseudocode in a full browser editor with docs, examples, flowcharts, and workspace saving.",
-  applicationName: "PseudoEditor",
-  keywords: [
-    "pseudocode compiler",
-    "browser pseudocode editor",
-    "IGCSE pseudocode",
-    "pseudocode runner",
-    "Cambridge pseudocode",
-  ],
+  description: homeSeoDescription,
+  applicationName: productName,
+  authors: [{ name: organizationName }],
+  creator: organizationName,
+  publisher: organizationName,
+  keywords: seoKeywords,
   alternates: {
     canonical: "/",
   },
   openGraph: {
     type: "website",
     url: "https://pseudoeditor.dev",
-    siteName: "PseudoEditor",
-    title: "PseudoEditor - Browser Pseudocode Compiler",
-    description:
-      "A full browser version of Pseudocode Compiler with docs, examples, flowcharts, and cloud workspace saving.",
+    siteName: productName,
+    title: homeSeoTitle,
+    description: homeSeoDescription,
     images: [{ url: "/icon.png?v=2", width: 512, height: 512, alt: "PseudoEditor app icon" }],
   },
   twitter: {
     card: "summary",
-    title: "PseudoEditor - Browser Pseudocode Compiler",
-    description:
-      "Write, compile, run, and debug IGCSE-style pseudocode directly in the browser.",
+    title: homeSeoTitle,
+    description: homeSeoDescription,
     images: ["/icon.png?v=2"],
   },
   icons: {

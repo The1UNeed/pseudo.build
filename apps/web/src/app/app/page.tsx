@@ -44,6 +44,7 @@ import {
 } from "@igcse/workspace";
 import { Breadcrumbs } from "@/app/components/Breadcrumbs";
 import { WorkspaceSidebar } from "@/app/components/WorkspaceSidebar";
+import ManualContent from "@/app/(public)/manual/ManualContent";
 import { useWorkspaceSession } from "@/app/hooks/useWorkspaceSession";
 import {
   Show,
@@ -339,6 +340,7 @@ export default function HomePage() {
   const [touchSidebarVisible, setTouchSidebarVisible] = useState(true);
   const [touchOutputVisible, setTouchOutputVisible] = useState(true);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
+  const [showManualPanel, setShowManualPanel] = useState(false);
   const [showSignInPrompt, setShowSignInPrompt] = useState(false);
   const [showFlowchart, setShowFlowchart] = useState(false);
   const [showCreateFileDialog, setShowCreateFileDialog] = useState(false);
@@ -354,16 +356,17 @@ export default function HomePage() {
   const manualSaveStatusTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!showFlowchartPrompt && !showCreateFileDialog) return;
+    if (!showFlowchartPrompt && !showCreateFileDialog && !showManualPanel) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         if (showCreateFileDialog) setShowCreateFileDialog(false);
         if (showFlowchartPrompt) setShowFlowchartPrompt(false);
+        if (showManualPanel) setShowManualPanel(false);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showFlowchartPrompt, showCreateFileDialog]);
+  }, [showFlowchartPrompt, showCreateFileDialog, showManualPanel]);
   const [systemTheme, setSystemTheme] = useState<"dark" | "light">(() => getSystemTheme());
 
   const clearManualSaveStatusTimer = useCallback(() => {
@@ -1106,8 +1109,25 @@ export default function HomePage() {
   };
 
   const openManualPage = () => {
-    window.location.assign("/manual");
+    setShowManualPanel(true);
   };
+
+  const renderManualDialog = () =>
+    showManualPanel ? (
+      <div className="fixed inset-0 z-[var(--z-modal)] flex bg-[var(--overlay-strong)] p-0 md:p-5">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="workspace-manual-title"
+          className="mx-auto h-full w-full max-w-6xl overflow-auto bg-[#f7f8f3] shadow-[var(--shadow-modal)] md:rounded-[24px] md:border md:border-[#d7ddd0]"
+        >
+          <h2 id="workspace-manual-title" className="sr-only">
+            Pseudocode manual
+          </h2>
+          <ManualContent isModal onClose={() => setShowManualPanel(false)} />
+        </div>
+      </div>
+    ) : null;
 
   const renderFlowchartPromptDialog = () =>
     showFlowchartPrompt ? (
@@ -2001,6 +2021,7 @@ export default function HomePage() {
           {renderSignInPromptDialog()}
           {renderCreateFileDialog()}
           {renderFlowchartPromptDialog()}
+          {renderManualDialog()}
         </div>
       </main>
     );
@@ -2546,6 +2567,7 @@ export default function HomePage() {
       {renderSignInPromptDialog()}
       {renderCreateFileDialog()}
       {renderFlowchartPromptDialog()}
+      {renderManualDialog()}
     </main>
   );
 }

@@ -433,9 +433,15 @@ code {
   --text: #151716;
   --text2: #4b5650;
   --text3: #6b746e;
-  --code-text: #dce8d1;
-  --code-keyword: #0b6e4f;
-  --code-func: #1f4e79;
+  --code-text: #111111;
+  --code-keyword: #9b2d63;
+  --code-type: #0f7a94;
+  --code-func: #7856b3;
+  --code-string: #b45438;
+  --code-number: #8d6a12;
+  --code-operator: #2a241f;
+  --code-comment: #8c7b6a;
+  --code-variable: #2d7a6d;
   --radius-xl: 0.75rem;
   --radius-2xl: 0.5rem;
   --shadow-card: 0 1px 2px rgba(17, 19, 19, 0.06);
@@ -444,6 +450,12 @@ code {
     linear-gradient(180deg, rgba(238, 243, 233, 0.8), transparent 18rem),
     var(--bg);
   color: var(--text);
+}
+
+.manual-shell-modal {
+  min-height: 100%;
+  background: var(--bg);
+  padding-top: 3.75rem;
 }
 
 .manual-container {
@@ -488,6 +500,36 @@ code {
     0 0 48px color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
+.manual-shell-modal .manual-container {
+  --card-bg: transparent;
+  --card-border: transparent;
+  --card-shadow: none;
+  --card-shadow-hover: none;
+  --card-glow: none;
+}
+
+.manual-shell-modal .manual-card,
+.manual-shell-modal .manual-card:hover,
+.manual-shell-modal .manual-card-accent,
+.manual-shell-modal .manual-card-accent:hover {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  overflow: visible;
+  transform: none;
+}
+
+.manual-shell-modal .manual-card > .relative {
+  padding: 0;
+}
+
+.manual-shell-modal .manual-container > .manual-card:not(:first-child) {
+  padding-top: 1.2rem;
+  border-top: 1px solid color-mix(in srgb, var(--separator) 72%, transparent);
+  border-radius: 0;
+}
+
 .manual-nav-pill {
   display: inline-flex;
   align-items: center;
@@ -523,8 +565,8 @@ code {
 
 .manual-code-block {
   border-radius: var(--radius-xl);
-  background: color-mix(in srgb, var(--bg) 85%, transparent);
-  border: 1px solid var(--card-border);
+  background: #ffffff;
+  border: 1px solid color-mix(in srgb, var(--separator) 72%, transparent);
   box-shadow: inset 0 1px 2px rgba(0,0,0,0.06);
   overflow: hidden;
 }
@@ -846,6 +888,50 @@ code {
   font-size: 0.78rem;
   line-height: 1.7;
   color: var(--code-text);
+  background: #ffffff;
+  tab-size: 4;
+}
+
+.manual-code-block code {
+  color: inherit;
+}
+
+.manual-code-line {
+  min-height: 1.7em;
+}
+
+.manual-token-keyword {
+  color: var(--code-keyword);
+}
+
+.manual-token-type {
+  color: var(--code-type);
+}
+
+.manual-token-predefined {
+  color: var(--code-func);
+}
+
+.manual-token-string {
+  color: var(--code-string);
+}
+
+.manual-token-number {
+  color: var(--code-number);
+}
+
+.manual-token-operator,
+.manual-token-delimiter {
+  color: var(--code-operator);
+}
+
+.manual-token-comment {
+  color: var(--code-comment);
+  font-style: italic;
+}
+
+.manual-token-identifier {
+  color: var(--code-variable);
 }
 
 .manual-table-wrap {
@@ -945,6 +1031,43 @@ code {
   color: var(--text);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.manual-modal-close {
+  position: fixed;
+  top: max(1rem, calc(env(safe-area-inset-top) + 1rem));
+  right: max(1rem, calc((100vw - 72rem) / 2 + 1rem));
+  z-index: calc(var(--z-modal) + 1);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--separator) 80%, transparent);
+  background: color-mix(in srgb, var(--surface2) 86%, white);
+  color: var(--text2);
+  font-size: 0.8rem;
+  font-weight: 600;
+  box-shadow: 0 8px 24px rgba(21, 23, 22, 0.12);
+  backdrop-filter: blur(10px);
+  transition:
+    background 180ms ease,
+    color 180ms ease,
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.manual-modal-close:hover {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface2));
+  color: var(--text);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 28px rgba(21, 23, 22, 0.16);
+}
+
+@media (max-width: 767px) {
+  .manual-modal-close {
+    right: max(0.8rem, calc(env(safe-area-inset-right) + 0.8rem));
+  }
 }
 
 /* Entrance animation */

@@ -14,6 +14,12 @@ export function getPseudocodeEditorOptions(
     automaticLayout: true,
     renderLineHighlight: "all",
     scrollBeyondLastLine: false,
+    smoothScrolling: true,
+    mouseWheelScrollSensitivity: appleTouchDevice ? 0.7 : 0.85,
+    fastScrollSensitivity: 3,
+    stickyScroll: {
+      enabled: false,
+    },
     padding: {
       top: 8,
       bottom: 18,

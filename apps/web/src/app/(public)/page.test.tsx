@@ -313,6 +313,24 @@ describe("HomePage workspace flow", () => {
     });
   });
 
+  it("opens the manual inside the workspace", async () => {
+    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+    render(<HomePage />);
+
+    const editor = await screen.findByRole("textbox", { name: "Mock editor" });
+    fireEvent.click(screen.getByRole("button", { name: "Manual" }));
+
+    const manualDialog = await screen.findByRole("dialog", { name: "Pseudocode manual" });
+    expect(within(manualDialog).getByText("Detailed Pseudocode Guidelines")).toBeInTheDocument();
+
+    fireEvent.click(within(manualDialog).getByRole("button", { name: "Close" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Pseudocode manual" })).not.toBeInTheDocument();
+    });
+    expect(editor).toHaveValue('OUTPUT "Main"');
+  });
+
   it("uses the shared create file dialog from the sidebar while keeping the pseudo extension fixed", async () => {
     loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
     render(<HomePage />);
