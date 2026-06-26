@@ -17,6 +17,7 @@ import {
   ROOT_FOLDER_NAME,
   setActiveDocument,
   updateDocumentSource,
+  validateWorkspaceForPersistence,
   validateWorkspaceState,
 } from "./index";
 
@@ -223,5 +224,57 @@ describe("workspace migration", () => {
     });
 
     expect(invalid).toBeNull();
+  });
+
+  it("accepts a bounded valid workspace for cloud persistence", () => {
+    const workspace = createDefaultWorkspace({ sampleSource: SAMPLE_SOURCE });
+
+    const result = validateWorkspaceForPersistence(workspace);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(JSON.parse(result.serializedWorkspace)).toMatchObject({
+        version: 2,
+        rootFolderId: ROOT_FOLDER_ID,
+      });
+    }
+  });
+
+  it("rejects malformed cloud persistence payloads", () => {
+    const result = validateWorkspaceForPersistence({ version: 2, rootFolderId: ROOT_FOLDER_ID });
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: "invalid",
+    });
+  });
+
+  it("rejects oversized cloud persistence payloads", () => {
+    const workspace = createDefaultWorkspace({ sampleSource: "A".repeat(300_000) });
+
+    const result = validateWorkspaceForPersistence(workspace);
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: "too_large",
+    });
+  });
+
+  it("rejects cloud persistence payloads with too many nodes", () => {
+    let workspace = createEmptyWorkspace("2026-03-15T00:00:00.000Z");
+    for (let index = 0; index < 501; index += 1) {
+      workspace = createDocument(workspace, {
+        id: `doc-${index}`,
+        name: `Doc ${index}`,
+        now: "2026-03-15T00:00:00.000Z",
+      });
+    }
+
+    const result = validateWorkspaceForPersistence(workspace);
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: "too_large",
+    });
   });
 });

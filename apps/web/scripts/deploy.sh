@@ -177,6 +177,82 @@ cleanup() {
 }
 trap cleanup EXIT
 
+assert_no_sensitive_files() {
+    local staged_path="$1"
+    local sensitive_files
+
+    sensitive_files=$(find "$staged_path" \
+        \( \
+            -path '*/.clerk/*' -o \
+            -path '*/.vercel/*' -o \
+            -path '*/.next/*' -o \
+            -name '.env' -o \
+            -name '.env.*' -o \
+            -name 'keyless.json' -o \
+            -path '*/convex/workspaceSyncSecret.ts' \
+        \) -print)
+
+    if [ -n "$sensitive_files" ]; then
+        echo "Error: deployment package contains sensitive or generated local files:" >&2
+        echo "$sensitive_files" >&2
+        exit 1
+    fi
+}
+
+assert_no_sensitive_tar_entries() {
+    local tarball_path="$1"
+    local sensitive_entries
+
+    sensitive_entries=$(tar -tzf "$tarball_path" | grep -E '(^|/)(\.clerk|\.vercel|\.next)(/|$)|(^|/)\.env(\.|$)|(^|/)keyless\.json$|(^|/)convex/workspaceSyncSecret\.ts$' || true)
+
+    if [ -n "$sensitive_entries" ]; then
+        echo "Error: deployment package contains sensitive or generated local files:" >&2
+        echo "$sensitive_entries" >&2
+        exit 1
+    fi
+}
+
+stage_project_files() {
+    local project_path="$1"
+    local staging_path="$2"
+    local file_list="$TEMP_DIR/git-files.list"
+    local raw_file_list="$TEMP_DIR/git-files.raw"
+    local relative_file
+
+    if git -C "$project_path" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        git -C "$project_path" ls-files -z -- . > "$raw_file_list"
+        : > "$file_list"
+
+        while IFS= read -r -d '' relative_file; do
+            if [ -e "$project_path/$relative_file" ]; then
+                printf '%s\0' "$relative_file" >> "$file_list"
+            fi
+        done < "$raw_file_list"
+
+        tar -C "$project_path" --null -T "$file_list" -cf - | tar -C "$staging_path" -xf -
+        return
+    fi
+
+    tar -C "$project_path" \
+        --exclude='node_modules' \
+        --exclude='.git' \
+        --exclude='.clerk' \
+        --exclude='.clerk/*' \
+        --exclude='.vercel' \
+        --exclude='.vercel/*' \
+        --exclude='.next' \
+        --exclude='.next/*' \
+        --exclude='.env' \
+        --exclude='.env.*' \
+        --exclude='dist' \
+        --exclude='coverage' \
+        --exclude='target' \
+        --exclude='*.tsbuildinfo' \
+        --exclude='*.log' \
+        --exclude='.DS_Store' \
+        -cf - . | tar -C "$staging_path" -xf -
+}
+
 echo "Preparing deployment..." >&2
 
 # Check if input is a .tgz file or a directory
@@ -187,6 +263,7 @@ if [ -f "$INPUT_PATH" ] && [[ "$INPUT_PATH" == *.tgz ]]; then
     echo "Using provided tarball..." >&2
     TARBALL="$INPUT_PATH"
     CLEANUP_TEMP=false
+    assert_no_sensitive_tar_entries "$TARBALL"
     # Can't detect framework from tarball, leave as null
 elif [ -d "$INPUT_PATH" ]; then
     # Input is a directory, need to tar it
@@ -198,12 +275,9 @@ elif [ -d "$INPUT_PATH" ]; then
     # Stage files into a temporary directory to avoid mutating the source tree.
     mkdir -p "$STAGING_DIR"
     echo "Staging project files..." >&2
-    tar -C "$PROJECT_PATH" \
-        --exclude='node_modules' \
-        --exclude='.git' \
-        --exclude='.env' \
-        --exclude='.env.*' \
-        -cf - . | tar -C "$STAGING_DIR" -xf -
+    stage_project_files "$PROJECT_PATH" "$STAGING_DIR"
+
+    assert_no_sensitive_files "$STAGING_DIR"
 
     # Check if this is a static HTML project (no package.json)
     if [ ! -f "$PROJECT_PATH/package.json" ]; then
@@ -225,6 +299,7 @@ elif [ -d "$INPUT_PATH" ]; then
     # Create tarball of the project (excluding node_modules and .git)
     echo "Creating deployment package..." >&2
     tar -czf "$TARBALL" -C "$STAGING_DIR" .
+    assert_no_sensitive_tar_entries "$TARBALL"
 else
     echo "Error: Input must be a directory or a .tgz file" >&2
     exit 1
@@ -232,6 +307,12 @@ fi
 
 if [ "$FRAMEWORK" != "null" ]; then
     echo "Detected framework: $FRAMEWORK" >&2
+fi
+
+if [ "${DEPLOY_DRY_RUN:-}" = "1" ]; then
+    CLEANUP_TEMP=false
+    echo "{\"tarball\":\"$TARBALL\",\"framework\":\"$FRAMEWORK\"}"
+    exit 0
 fi
 
 # Deploy

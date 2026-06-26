@@ -20,11 +20,13 @@ describe("getWorkspaceRequestAuth", () => {
   it("uses Clerk middleware auth when it is available", async () => {
     authMock.mockResolvedValue({
       userId: "user_session",
+      getToken: vi.fn().mockResolvedValue("convex-session-token"),
       sessionClaims: { email: "session@example.com" },
     } as unknown as Awaited<ReturnType<typeof auth>>);
 
     await expect(getWorkspaceRequestAuth(new Request("https://app.test/api/workspace"))).resolves.toEqual({
       userId: "user_session",
+      convexToken: "convex-session-token",
       claims: { email: "session@example.com" },
     });
     expect(verifyTokenMock).not.toHaveBeenCalled();
@@ -48,6 +50,7 @@ describe("getWorkspaceRequestAuth", () => {
 
     await expect(getWorkspaceRequestAuth(request)).resolves.toEqual({
       userId: "user_token",
+      convexToken: "session-token",
       claims: {
         sub: "user_token",
         email: "token@example.com",

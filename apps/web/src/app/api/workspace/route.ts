@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { ConvexHttpClient } from "convex/browser";
+import {
+  DEFAULT_WORKSPACE_PERSISTENCE_LIMITS,
+  getUtf8ByteLength,
+  validateWorkspaceForPersistence,
+} from "@igcse/workspace";
 import { api } from "../../../../../../convex/_generated/api";
 import { getWorkspaceRequestAuth } from "./workspaceAuth";
 import { buildWorkspaceSyncUser } from "./workspaceUser";
@@ -9,23 +14,59 @@ const hasClerkServerConfig = Boolean(
   process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY,
 );
 const shouldUseCloudWorkspaceSync = !isElectronBuild && hasClerkServerConfig;
+const maxWorkspaceRequestBytes = DEFAULT_WORKSPACE_PERSISTENCE_LIMITS.maxSerializedBytes + 4096;
 
-function getConvexClient() {
+function getConvexClient(authToken: string) {
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL ?? process.env.CONVEX_URL;
   if (!convexUrl) {
     throw new Error("Missing NEXT_PUBLIC_CONVEX_URL or CONVEX_URL.");
   }
 
-  return new ConvexHttpClient(convexUrl);
+  return new ConvexHttpClient(convexUrl, { auth: authToken });
 }
 
-function getWorkspaceSyncSecret() {
-  const serverSecret = process.env.WORKSPACE_SYNC_SECRET;
-  if (!serverSecret) {
-    throw new Error("Missing WORKSPACE_SYNC_SECRET.");
+async function readWorkspaceRequestBody(request: Request) {
+  const rawBody = await request.text();
+  if (getUtf8ByteLength(rawBody) > maxWorkspaceRequestBytes) {
+    return {
+      ok: false as const,
+      response: NextResponse.json({ error: "Workspace payload is too large." }, { status: 413 }),
+    };
   }
 
-  return serverSecret;
+  let body: unknown;
+  try {
+    body = JSON.parse(rawBody) as unknown;
+  } catch {
+    return {
+      ok: false as const,
+      response: NextResponse.json({ error: "Workspace payload must be valid JSON." }, { status: 400 }),
+    };
+  }
+
+  if (!body || typeof body !== "object" || !Object.prototype.hasOwnProperty.call(body, "workspace")) {
+    return {
+      ok: false as const,
+      response: NextResponse.json({ error: "Missing workspace payload." }, { status: 400 }),
+    };
+  }
+
+  const workspace = (body as { workspace: unknown }).workspace;
+  const validation = validateWorkspaceForPersistence(workspace);
+  if (!validation.ok) {
+    return {
+      ok: false as const,
+      response: NextResponse.json(
+        { error: validation.message },
+        { status: validation.reason === "too_large" ? 413 : 400 },
+      ),
+    };
+  }
+
+  return {
+    ok: true as const,
+    workspaceJson: validation.serializedWorkspace,
+  };
 }
 
 export async function GET(request: Request) {
@@ -42,10 +83,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const workspace = await getConvexClient().query(api.workspaces.getCurrent, {
-    serverSecret: getWorkspaceSyncSecret(),
-    clerkUserId: requestAuth.userId,
-  });
+  if (!requestAuth.convexToken) {
+    return NextResponse.json({ error: "Workspace authentication token is not configured." }, { status: 503 });
+  }
+
+  const workspace = await getConvexClient(requestAuth.convexToken).query(api.workspaces.getCurrent, {});
 
   return NextResponse.json({ workspace });
 }
@@ -67,16 +109,18 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await request.json()) as { workspace?: unknown };
-
-  if (!("workspace" in body)) {
-    return NextResponse.json({ error: "Missing workspace payload." }, { status: 400 });
+  if (!requestAuth.convexToken) {
+    return NextResponse.json({ error: "Workspace authentication token is not configured." }, { status: 503 });
   }
 
-  await getConvexClient().mutation(api.workspaces.saveCurrent, {
-    serverSecret: getWorkspaceSyncSecret(),
-    user: buildWorkspaceSyncUser(requestAuth.userId, requestAuth.claims),
-    workspace: body.workspace,
+  const body = await readWorkspaceRequestBody(request);
+  if (!body.ok) {
+    return body.response;
+  }
+
+  await getConvexClient(requestAuth.convexToken).mutation(api.workspaces.saveCurrent, {
+    user: buildWorkspaceSyncUser(requestAuth.claims),
+    workspaceJson: body.workspaceJson,
   });
 
   return NextResponse.json({ ok: true });

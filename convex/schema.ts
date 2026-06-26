@@ -11,7 +11,8 @@ export default defineSchema({
   }).index("by_clerk_user", ["clerkUserId"]),
   workspaces: defineTable({
     clerkUserId: v.string(),
-    workspace: v.any(),
+    workspaceJson: v.optional(v.string()),
+    workspace: v.optional(v.any()),
     updatedAt: v.number(),
   }).index("by_clerk_user", ["clerkUserId"]),
 });

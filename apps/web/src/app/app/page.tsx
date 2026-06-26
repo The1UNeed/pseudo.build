@@ -265,7 +265,7 @@ export default function HomePage() {
       return null;
     }
 
-    return await getToken({ skipCache: true });
+    return await getToken({ template: "convex", skipCache: true });
   }, [getToken]);
   const workspaceAuthTokenProvider =
     workspacePersistenceMode === "cloud" ? getCloudAuthToken : undefined;

@@ -3,8 +3,7 @@ import { buildWorkspaceSyncUser } from "./workspaceUser";
 
 describe("buildWorkspaceSyncUser", () => {
   it("normalizes missing profile claims for Convex", () => {
-    expect(buildWorkspaceSyncUser("user_123", { email: "alex@example.com" })).toEqual({
-      clerkUserId: "user_123",
+    expect(buildWorkspaceSyncUser({ email: "alex@example.com" })).toEqual({
       email: "alex@example.com",
       firstName: null,
       lastName: null,
@@ -13,13 +12,12 @@ describe("buildWorkspaceSyncUser", () => {
 
   it("supports Clerk claim naming variants", () => {
     expect(
-      buildWorkspaceSyncUser("user_123", {
+      buildWorkspaceSyncUser({
         email_address: "alex@example.com",
         first_name: "Alex",
         last_name: "Dev",
       }),
     ).toEqual({
-      clerkUserId: "user_123",
       email: "alex@example.com",
       firstName: "Alex",
       lastName: "Dev",

@@ -135,6 +135,40 @@ export interface CreateWorkspaceOptions {
   now?: string;
 }
 
+export interface WorkspacePersistenceLimits {
+  maxSerializedBytes: number;
+  maxDepth: number;
+  maxObjectEntries: number;
+  maxArrayItems: number;
+  maxStringBytes: number;
+  maxNodes: number;
+  maxVirtualFiles: number;
+  maxVirtualFileLines: number;
+}
+
+export type WorkspacePersistenceValidationResult =
+  | {
+      ok: true;
+      workspace: WorkspaceState;
+      serializedWorkspace: string;
+    }
+  | {
+      ok: false;
+      reason: "invalid" | "too_large";
+      message: string;
+    };
+
+export const DEFAULT_WORKSPACE_PERSISTENCE_LIMITS: WorkspacePersistenceLimits = {
+  maxSerializedBytes: 512 * 1024,
+  maxDepth: 24,
+  maxObjectEntries: 3000,
+  maxArrayItems: 3000,
+  maxStringBytes: 256 * 1024,
+  maxNodes: 500,
+  maxVirtualFiles: 100,
+  maxVirtualFileLines: 5000,
+};
+
 export interface CreateNodeOptions {
   parentId?: string;
   name?: string;
@@ -342,6 +376,71 @@ export function validateWorkspaceState(raw: unknown): WorkspaceState | null {
     lastFocusedTerminalPanelId:
       typeof candidate.lastFocusedTerminalPanelId === "string" ? candidate.lastFocusedTerminalPanelId : null,
   });
+}
+
+export function validateWorkspaceForPersistence(
+  raw: unknown,
+  limits: WorkspacePersistenceLimits = DEFAULT_WORKSPACE_PERSISTENCE_LIMITS,
+): WorkspacePersistenceValidationResult {
+  const limitError = inspectWorkspacePayloadLimits(raw, limits);
+  if (limitError) {
+    return {
+      ok: false,
+      reason: "too_large",
+      message: limitError,
+    };
+  }
+
+  const workspace = validateWorkspaceState(raw);
+  if (!workspace) {
+    return {
+      ok: false,
+      reason: "invalid",
+      message: "Workspace payload does not match the expected schema.",
+    };
+  }
+
+  const nodeCount = Object.keys(workspace.nodes).length;
+  if (nodeCount > limits.maxNodes) {
+    return {
+      ok: false,
+      reason: "too_large",
+      message: `Workspace payload has too many nodes (${nodeCount}/${limits.maxNodes}).`,
+    };
+  }
+
+  const virtualFileNames = Object.keys(workspace.virtualFiles);
+  if (virtualFileNames.length > limits.maxVirtualFiles) {
+    return {
+      ok: false,
+      reason: "too_large",
+      message: `Workspace payload has too many virtual files (${virtualFileNames.length}/${limits.maxVirtualFiles}).`,
+    };
+  }
+
+  const virtualFileLineCount = Object.values(workspace.virtualFiles).reduce((total, lines) => total + lines.length, 0);
+  if (virtualFileLineCount > limits.maxVirtualFileLines) {
+    return {
+      ok: false,
+      reason: "too_large",
+      message: `Workspace payload has too many virtual file lines (${virtualFileLineCount}/${limits.maxVirtualFileLines}).`,
+    };
+  }
+
+  const serializedWorkspace = JSON.stringify(workspace);
+  if (getUtf8ByteLength(serializedWorkspace) > limits.maxSerializedBytes) {
+    return {
+      ok: false,
+      reason: "too_large",
+      message: `Workspace payload exceeds ${limits.maxSerializedBytes} bytes after normalization.`,
+    };
+  }
+
+  return {
+    ok: true,
+    workspace,
+    serializedWorkspace,
+  };
 }
 
 export function createFolder(state: WorkspaceState, options: CreateNodeOptions = {}): WorkspaceState {
@@ -2145,6 +2244,94 @@ function isWorkspaceNode(raw: unknown): raw is WorkspaceNode {
   }
 
   return typeof candidate.source === "string";
+}
+
+export function getUtf8ByteLength(value: string) {
+  let bytes = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const codePoint = value.charCodeAt(index);
+    if (codePoint < 0x80) {
+      bytes += 1;
+    } else if (codePoint < 0x800) {
+      bytes += 2;
+    } else if (codePoint >= 0xd800 && codePoint <= 0xdbff && index + 1 < value.length) {
+      bytes += 4;
+      index += 1;
+    } else {
+      bytes += 3;
+    }
+  }
+  return bytes;
+}
+
+function inspectWorkspacePayloadLimits(raw: unknown, limits: WorkspacePersistenceLimits): string | null {
+  let serialized: string;
+  try {
+    const nextSerialized = JSON.stringify(raw);
+    if (!nextSerialized) {
+      return "Workspace payload must be JSON serializable.";
+    }
+    serialized = nextSerialized;
+  } catch {
+    return "Workspace payload must be JSON serializable.";
+  }
+
+  if (getUtf8ByteLength(serialized) > limits.maxSerializedBytes) {
+    return `Workspace payload exceeds ${limits.maxSerializedBytes} bytes.`;
+  }
+
+  const stack: Array<{ value: unknown; depth: number }> = [{ value: raw, depth: 0 }];
+  const seen = new WeakSet<object>();
+  let objectEntries = 0;
+  let arrayItems = 0;
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) {
+      continue;
+    }
+
+    const { value, depth } = current;
+    if (depth > limits.maxDepth) {
+      return `Workspace payload exceeds depth ${limits.maxDepth}.`;
+    }
+
+    if (typeof value === "string" && getUtf8ByteLength(value) > limits.maxStringBytes) {
+      return `Workspace payload contains a string over ${limits.maxStringBytes} bytes.`;
+    }
+
+    if (!value || typeof value !== "object") {
+      continue;
+    }
+
+    if (seen.has(value)) {
+      continue;
+    }
+    seen.add(value);
+
+    if (Array.isArray(value)) {
+      arrayItems += value.length;
+      if (arrayItems > limits.maxArrayItems) {
+        return `Workspace payload has too many array items (${arrayItems}/${limits.maxArrayItems}).`;
+      }
+      for (const item of value) {
+        stack.push({ value: item, depth: depth + 1 });
+      }
+      continue;
+    }
+
+    const entries = Object.entries(value);
+    objectEntries += entries.length;
+    if (objectEntries > limits.maxObjectEntries) {
+      return `Workspace payload has too many object fields (${objectEntries}/${limits.maxObjectEntries}).`;
+    }
+
+    for (const [, entryValue] of entries) {
+      stack.push({ value: entryValue, depth: depth + 1 });
+    }
+  }
+
+  return null;
 }
 
 function isString(value: unknown): value is string {

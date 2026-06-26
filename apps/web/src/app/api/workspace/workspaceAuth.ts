@@ -2,6 +2,7 @@ import { auth, verifyToken } from "@clerk/nextjs/server";
 
 interface WorkspaceRequestAuth {
   userId: string;
+  convexToken: string | null;
   claims: Record<string, unknown> | null;
 }
 
@@ -24,6 +25,7 @@ export async function getWorkspaceRequestAuth(request: Request): Promise<Workspa
   if (authState.userId) {
     return {
       userId: authState.userId,
+      convexToken: await authState.getToken({ template: "convex" }),
       claims: (authState.sessionClaims as Record<string, unknown> | null | undefined) ?? null,
     };
   }
@@ -50,6 +52,7 @@ export async function getWorkspaceRequestAuth(request: Request): Promise<Workspa
 
     return {
       userId,
+      convexToken: bearerToken,
       claims: claims as Record<string, unknown>,
     };
   } catch (error) {
