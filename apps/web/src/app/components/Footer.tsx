@@ -47,7 +47,7 @@ export function Footer() {
 
         {columns.map((column) => (
           <div key={column.title}>
-            <p className="font-mono text-xs text-[#7a756b]">// {column.title}</p>
+            <p className="font-mono text-xs text-[#7a756b]">{"// "}{column.title}</p>
             <ul className="mt-4 space-y-2.5 text-sm">
               {column.links.map((link) =>
                 "external" in link ? (

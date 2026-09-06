@@ -35,7 +35,7 @@ export function LegalPage({ eyebrow, title, summary, effectiveDate, sections }: 
 
       <section className="site-wrap grid gap-10 pb-20 lg:grid-cols-[220px_1fr]">
         <aside className="lg:sticky lg:top-24 lg:self-start">
-          <p className="font-mono text-xs text-[var(--ink-3)]">// on this page</p>
+          <p className="font-mono text-xs text-[var(--ink-3)]">{"// on this page"}</p>
           <nav className="site-toc mt-3">
             {sections.map((section) => (
               <a key={section.id} href={`#${section.id}`}>
@@ -43,7 +43,7 @@ export function LegalPage({ eyebrow, title, summary, effectiveDate, sections }: 
               </a>
             ))}
           </nav>
-          <p className="mt-8 font-mono text-xs text-[var(--ink-3)]">// related</p>
+          <p className="mt-8 font-mono text-xs text-[var(--ink-3)]">{"// related"}</p>
           <nav className="site-toc mt-3">
             {legalLinks.map((link) => (
               <Link key={link.href} href={link.href}>

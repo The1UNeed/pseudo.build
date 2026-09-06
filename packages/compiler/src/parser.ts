@@ -61,9 +61,14 @@ function createFallbackSpan(): SourceSpan {
   return { startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 };
 }
 
+const MAX_NESTING_DEPTH = 200;
+
+class NestingLimitError extends Error {}
+
 class Parser {
   private tokens: Token[];
   private index = 0;
+  private depth = 0;
   diagnostics: Diagnostic[];
 
   constructor(tokens: Token[], diagnostics: Diagnostic[]) {
@@ -73,7 +78,15 @@ class Parser {
 
   parseProgram(): ProgramNode {
     const start = this.current().span;
-    const body = this.parseStatements(new Set(["EOF"]));
+    let body: StatementNode[] = [];
+    try {
+      body = this.parseStatements(new Set(["EOF"]));
+    } catch (error) {
+      if (!(error instanceof NestingLimitError)) {
+        throw error;
+      }
+      this.error(this.current(), "SYN099", `Program nesting is too deep (limit ${MAX_NESTING_DEPTH} levels).`);
+    }
     const end = this.previous().span;
     return {
       kind: "program",
@@ -82,7 +95,23 @@ class Parser {
     };
   }
 
+  private enterNesting() {
+    this.depth += 1;
+    if (this.depth > MAX_NESTING_DEPTH) {
+      throw new NestingLimitError();
+    }
+  }
+
   private parseStatements(stopKeywords: Set<string>): StatementNode[] {
+    this.enterNesting();
+    try {
+      return this.parseStatementsInner(stopKeywords);
+    } finally {
+      this.depth -= 1;
+    }
+  }
+
+  private parseStatementsInner(stopKeywords: Set<string>): StatementNode[] {
     const statements: StatementNode[] = [];
     this.consumeNewlines();
 
@@ -562,6 +591,15 @@ class Parser {
   }
 
   private parseExpression(minPrecedence = 1): ExpressionNode {
+    this.enterNesting();
+    try {
+      return this.parseExpressionInner(minPrecedence);
+    } finally {
+      this.depth -= 1;
+    }
+  }
+
+  private parseExpressionInner(minPrecedence: number): ExpressionNode {
     let left = this.parseUnary();
 
     while (true) {

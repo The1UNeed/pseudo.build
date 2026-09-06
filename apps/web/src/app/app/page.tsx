@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Image from "next/image";
+import Link from "next/link";
 import { BrandMark } from "@/app/components/BrandMark";
 import {
   DragEvent,
@@ -2051,7 +2052,7 @@ export default function HomePage() {
         {/* Spacer for native traffic lights (desktop) / brand label (web) */}
         <div className={`flex items-center gap-2 ${isDesktopShell ? "w-[80px]" : "w-auto"}`}>
           {isDesktopShell ? null : (
-            <a
+            <Link
               href="/"
               className="flex items-center gap-2 transition hover:opacity-80"
               aria-label="Pseudo Build home"
@@ -2060,7 +2061,7 @@ export default function HomePage() {
               <span className="text-xs font-semibold tracking-[0.12em] text-[var(--text2)]">
                 Pseudo Build
               </span>
-            </a>
+            </Link>
           )}
         </div>
 

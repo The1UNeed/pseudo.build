@@ -89,7 +89,7 @@ export async function GET(request: Request) {
 
   const workspace = await getConvexClient(requestAuth.convexToken).query(api.workspaces.getCurrent, {});
 
-  return NextResponse.json({ workspace });
+  return NextResponse.json({ workspace }, { headers: { "Cache-Control": "private, no-store" } });
 }
 
 export async function PUT(request: Request) {

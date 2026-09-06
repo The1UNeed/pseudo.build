@@ -50,7 +50,7 @@ async function main() {
   // Drop generated documents whose ids would collide; Convex import assigns new ids when --replace-all is used.
   const entries = await readdir(work);
   await rm(path.resolve(output), { force: true });
-  execFileSync("zip", ["-qr", path.resolve(output), ...entries], { cwd: work });
+  execFileSync("zip", ["-qr", path.resolve(output), "--", ...entries], { cwd: work });
   await writeFile(path.join(outDir, "unmapped.json"), JSON.stringify(unmapped, null, 2));
   await rm(work, { recursive: true, force: true });
   console.log(`Wrote ${output}. Unmapped rows: ${unmapped.length} (see out/unmapped.json)`);

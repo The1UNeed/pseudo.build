@@ -329,7 +329,7 @@ export default function LandingPage() {
         </div>
         <div className="flex flex-col justify-between rounded-[var(--radius)] border-[1.5px] border-[var(--ink)] bg-[var(--ink)] p-8 text-[var(--paper)] shadow-[6px_6px_0_0_var(--accent)]">
           <div>
-            <p className="font-mono text-xs text-[#a39c8c]">// open source</p>
+            <p className="font-mono text-xs text-[#a39c8c]">{"// open source"}</p>
             <h2 className="mt-3 text-3xl font-extrabold tracking-tight">Read the code. Run it yourself. Make it yours.</h2>
             <p className="mt-4 leading-7 text-[#b9b2a3]">
               Pseudo Build is licensed under the GNU GPL v3. Clone the repository, run it locally, file issues, and send pull requests.

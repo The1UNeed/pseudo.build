@@ -26,7 +26,7 @@ const contentSecurityPolicy = [
   "worker-src 'self' blob:",
   `connect-src 'self' ${[...clerkOrigins, ...convexOrigins, ...vercelOrigins].join(" ")}${isDev ? " ws: http://localhost:*" : ""}`,
   `frame-src ${clerkOrigins.join(" ")}`,
-  "upgrade-insecure-requests",
+  ...(isDev ? [] : ["upgrade-insecure-requests"]),
 ].join("; ");
 
 const securityHeaders = [

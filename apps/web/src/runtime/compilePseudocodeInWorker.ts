@@ -15,6 +15,7 @@ export interface CompilerRunResult {
   cached: boolean;
 }
 
+const COMPILE_TIMEOUT_MS = 10_000;
 const MAX_COMPILE_CACHE_ENTRIES = 40;
 
 function hashString(value: string): string {
@@ -139,7 +140,12 @@ class CompilerRunner {
 
     const worker = this.ensureWorker();
     if (!worker) {
-      const result = compilePseudocode(request);
+      let result: CompileResult;
+      try {
+        result = compilePseudocode(request);
+      } catch (error) {
+        result = compilerErrorResult(error instanceof Error ? error.message : "Unknown compiler error");
+      }
       if (cacheKey) {
         this.setCachedResult(cacheKey, result);
       }
@@ -152,7 +158,26 @@ class CompilerRunner {
     }
 
     return new Promise<CompilerRunResult>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject, cacheKey });
+      const timer = setTimeout(() => {
+        if (!this.pending.has(id)) {
+          return;
+        }
+        this.pending.delete(id);
+        this.worker?.terminate();
+        this.worker = null;
+        reject(new Error("Compiler timed out."));
+      }, COMPILE_TIMEOUT_MS);
+      this.pending.set(id, {
+        resolve: (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        reject: (error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+        cacheKey,
+      });
       worker.postMessage({ kind: "compile", id, request });
     }).catch((error) => {
       const message = error instanceof Error ? error.message : "Unknown compiler error";

@@ -13,8 +13,8 @@ OUTPUT Total`;
     const result = compilePseudocode({ source, filename: "main.pseudo", strict: true });
 
     expect(result.success).toBe(true);
-    expect(result.astJson).toContain('"kind": "for"');
-    expect(result.astJson).toContain('"kind": "output"');
+    expect(result.astJson).toContain('"kind":"for"');
+    expect(result.astJson).toContain('"kind":"output"');
   });
 
   it("returns syntax diagnostics for malformed IF blocks", () => {

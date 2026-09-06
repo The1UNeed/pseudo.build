@@ -168,7 +168,13 @@ function FlowchartEditorInner({
       return;
     }
 
-    const imported = buildFlowchartFromPseudocode(source);
+    let imported: ReturnType<typeof buildFlowchartFromPseudocode>;
+    try {
+      imported = buildFlowchartFromPseudocode(source);
+    } catch (error) {
+      console.warn("Flowchart import failed.", error);
+      return;
+    }
     const importedCode = generatePseudocodeFromFlowchart(imported.nodes, imported.edges)
       .replace(/\r\n/g, '\n')
       .trim();
