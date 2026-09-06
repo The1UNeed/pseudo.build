@@ -65,11 +65,6 @@ The site deploys to Vercel with `vercel.json`, which runs `scripts/vercel-build.
 Convex functions and build the web app in one step. Required Vercel environment variables:
 `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, and `CONVEX_DEPLOY_KEY`.
 
-## Migrating from a previous deployment
-
-See [`scripts/migration/README.md`](scripts/migration/README.md) for moving users and
-workspaces between Clerk applications and Convex projects.
-
 ## Contributing
 
 Issues and pull requests are welcome at https://github.com/The1UNeed/pseudo.build.

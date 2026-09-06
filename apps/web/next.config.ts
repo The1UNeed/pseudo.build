@@ -7,8 +7,6 @@ const isDev = process.env.NODE_ENV !== "production";
 const clerkOrigins = [
   "https://*.clerk.accounts.dev",
   "https://clerk.pseudo.build",
-  "https://clerk.pseudoeditor.dev",
-  "https://accounts.pseudoeditor.dev",
   "https://*.clerk.com",
   "https://challenges.cloudflare.com",
 ];
