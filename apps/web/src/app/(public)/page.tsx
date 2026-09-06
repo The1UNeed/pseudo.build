@@ -173,11 +173,11 @@ function HeroWindow() {
         <span className="site-window-dot" />
         <span className="site-window-dot" />
         <span className="ml-3">main.pseudo</span>
-        <span className="ml-auto text-[#e8590c]">compiled in 3 ms</span>
+        <span className="ml-auto text-[#7fd1b5]">compiled in 3 ms</span>
       </div>
       <div className="grid md:grid-cols-[150px_1fr]">
-        <aside className="hidden border-r border-white/10 p-4 font-mono text-[11px] text-[#a39c8c] md:block">
-          <p className="mb-3 text-[#7a756b]">workspace/</p>
+        <aside className="hidden border-r border-white/10 p-4 text-[11px] text-white/55 md:block">
+          <p className="mb-3 font-semibold uppercase text-white/80">Workspace</p>
           <p className="rounded bg-white/10 px-2 py-1 text-white">main.pseudo</p>
           <p className="px-2 py-1">validate.pseudo</p>
           <p className="px-2 py-1">search.pseudo</p>
@@ -202,9 +202,9 @@ function HeroWindow() {
             {"\n\n"}
             <span className="site-token-kw">OUTPUT</span> <span className="site-token-str">{'"Total = "'}</span>, Total
           </pre>
-          <div className="border-t border-white/10 bg-black/30 p-4 font-mono text-[12px]">
-            <p className="text-[#7a756b]">$ run main.pseudo</p>
-            <p className="mt-1 text-[#b5e08a]">Total = 15</p>
+          <div className="border-t border-white/10 bg-[#111313] p-4 font-mono text-[12px]">
+            <p className="text-white/50">Terminal</p>
+            <p className="mt-1 text-[#30d158]">&gt; Total = 15</p>
           </div>
         </div>
       </div>
@@ -220,7 +220,7 @@ export default function LandingPage() {
 
       <section className="site-wrap grid items-center gap-12 py-16 md:py-24 lg:grid-cols-[1.05fr_1fr]">
         <div>
-          <p className="site-eyebrow site-reveal">free · open source · GPL-3.0</p>
+          <p className="site-eyebrow site-reveal">Free and open source</p>
           <h1 className="site-h1 site-reveal site-reveal-2 mt-5">
             Build pseudo code
             <br />
@@ -235,14 +235,14 @@ export default function LandingPage() {
               Read the docs <ArrowRight size={16} />
             </Link>
           </div>
-          <p className="site-reveal site-reveal-4 mt-6 font-mono text-xs text-[var(--ink-3)]">
+          <p className="site-reveal site-reveal-4 mt-6 text-sm text-[var(--ink-3)]">
             No account needed. Sign in only if you want cloud sync.
           </p>
         </div>
         <HeroWindow />
       </section>
 
-      <section className="border-y-[1.5px] border-[var(--line)] bg-[var(--paper-2)]/70">
+      <section className="border-y border-[var(--line)] bg-[var(--paper-2)]">
         <div className="site-wrap py-16 md:py-20">
           <p className="site-eyebrow">what you get</p>
           <h2 className="site-h2 mt-3 max-w-2xl">An editor, a compiler, and a runtime. Nothing to install.</h2>
@@ -251,12 +251,9 @@ export default function LandingPage() {
               const Icon = feature.icon;
               return (
                 <article key={feature.title} className="site-card site-card-hover p-6">
-                  <div className="flex items-center justify-between">
-                    <span className="inline-flex rounded-md border-[1.5px] border-[var(--ink)] bg-[var(--paper)] p-2">
-                      <Icon size={20} />
-                    </span>
-                    <span className="font-mono text-xs text-[var(--ink-3)]">{feature.index}</span>
-                  </div>
+                  <span className="inline-flex rounded-lg bg-[var(--paper-2)] p-2.5 text-[var(--accent)]">
+                    <Icon size={22} />
+                  </span>
                   <h3 className="mt-5 text-lg font-extrabold tracking-tight">{feature.title}</h3>
                   <p className="mt-2 text-sm leading-6 text-[var(--ink-2)]">{feature.body}</p>
                 </article>
@@ -280,7 +277,7 @@ export default function LandingPage() {
         <div className="grid gap-4 sm:grid-cols-2">
           {docs.slice(0, 4).map((doc, index) => (
             <Link key={doc.slug} href={`/docs/${doc.slug}`} className="site-card p-5">
-              <span className="site-chip">doc {String(index + 1).padStart(2, "0")}</span>
+              <span className="site-chip">Guide {index + 1}</span>
               <h3 className="mt-4 font-extrabold tracking-tight">{doc.title}</h3>
               <p className="mt-2 text-sm leading-6 text-[var(--ink-2)]">{doc.description}</p>
             </Link>
@@ -288,21 +285,21 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="border-y-[1.5px] border-[var(--line)] bg-white">
+      <section className="border-y border-[var(--line)] bg-white">
         <div className="site-wrap py-16 md:py-20">
           <div className="flex flex-wrap items-end justify-between gap-5">
             <div>
               <p className="site-eyebrow">blog</p>
               <h2 className="site-h2 mt-3">Notes on writing better pseudocode.</h2>
             </div>
-            <Link href="/blog" className="inline-flex items-center gap-2 text-sm font-bold underline underline-offset-4">
+            <Link href="/blog" className="inline-flex items-center gap-2 text-sm font-bold text-[var(--accent)]">
               All posts <ArrowRight size={16} />
             </Link>
           </div>
           <div className="mt-8 grid gap-4 md:grid-cols-3">
             {posts.slice(0, 3).map((post) => (
               <Link key={post.slug} href={`/blog/${post.slug}`} className="site-card bg-[var(--paper)] p-5">
-                <p className="font-mono text-xs text-[var(--ink-3)]">{post.readingTime}</p>
+                <p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--ink-3)]">{post.readingTime}</p>
                 <h3 className="mt-3 text-lg font-extrabold leading-snug tracking-tight">{post.title}</h3>
                 <p className="mt-3 text-sm leading-6 text-[var(--ink-2)]">{post.description}</p>
               </Link>
@@ -315,7 +312,7 @@ export default function LandingPage() {
         <div>
           <p className="site-eyebrow">questions</p>
           <h2 className="site-h2 mt-3">Answers before you ask.</h2>
-          <div className="mt-8 divide-y divide-[var(--line)] border-y-[1.5px] border-[var(--line)]">
+          <div className="mt-8 divide-y divide-[var(--line)] border-y border-[var(--line)]">
             {faqItems.map((item) => (
               <details key={item.question} className="group py-4">
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-bold">
@@ -327,11 +324,11 @@ export default function LandingPage() {
             ))}
           </div>
         </div>
-        <div className="flex flex-col justify-between rounded-[var(--radius)] border-[1.5px] border-[var(--ink)] bg-[var(--ink)] p-8 text-[var(--paper)] shadow-[6px_6px_0_0_var(--accent)]">
+        <div className="flex flex-col justify-between rounded-[var(--radius)] bg-[var(--ink)] p-8 text-white">
           <div>
-            <p className="font-mono text-xs text-[#a39c8c]">{"// open source"}</p>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#7fd1b5]">Open source</p>
             <h2 className="mt-3 text-3xl font-extrabold tracking-tight">Read the code. Run it yourself. Make it yours.</h2>
-            <p className="mt-4 leading-7 text-[#b9b2a3]">
+            <p className="mt-4 leading-7 text-white/70">
               Pseudo Build is licensed under the GNU GPL v3. Clone the repository, run it locally, file issues, and send pull requests.
             </p>
           </div>
@@ -339,7 +336,7 @@ export default function LandingPage() {
             <a href={githubUrl} target="_blank" rel="noopener noreferrer" className="site-btn site-btn-accent">
               View on GitHub <ArrowUpRight size={16} />
             </a>
-            <Link href="/security" className="site-btn site-btn-ghost border-[var(--paper)] text-[var(--paper)] hover:bg-white/10">
+            <Link href="/security" className="site-btn site-btn-ghost !border-white/30 !text-white hover:!bg-white/10">
               Security policy
             </Link>
           </div>

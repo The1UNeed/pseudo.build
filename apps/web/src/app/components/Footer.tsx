@@ -42,12 +42,12 @@ export function Footer() {
             <span className="text-lg font-extrabold tracking-tight">{productName}</span>
           </div>
           <p className="mt-4 max-w-xs text-sm leading-6">{productSlogan}</p>
-          <p className="mt-4 font-mono text-xs text-[#7a756b]">Build your pseudo code project freely and creatively.</p>
+          <p className="mt-2 text-sm leading-6">Build your pseudo code project freely and creatively.</p>
         </div>
 
         {columns.map((column) => (
           <div key={column.title}>
-            <p className="font-mono text-xs text-[#7a756b]">{"// "}{column.title}</p>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-white">{column.title}</p>
             <ul className="mt-4 space-y-2.5 text-sm">
               {column.links.map((link) =>
                 "external" in link ? (
@@ -71,7 +71,7 @@ export function Footer() {
         <p>
           &copy; {year} {authorName}. Released under the GNU GPL v3.
         </p>
-        <p className="font-mono">Free and open source, forever.</p>
+        <p>Free and open source, forever.</p>
       </div>
     </footer>
   );

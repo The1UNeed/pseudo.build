@@ -108,16 +108,13 @@ export default function ManualPage() {
       </section>
 
       <section className="site-wrap grid gap-4 pb-16 md:grid-cols-2">
-        {manualSections.map((section, index) => {
+        {manualSections.map((section) => {
           const Icon = section.icon;
           return (
             <article key={section.title} className="site-card site-card-hover p-6">
-              <div className="flex items-center justify-between">
-                <span className="inline-flex rounded-md border-[1.5px] border-[var(--ink)] bg-[var(--paper)] p-2">
-                  <Icon size={20} />
-                </span>
-                <span className="font-mono text-xs text-[var(--ink-3)]">{String(index + 1).padStart(2, "0")}</span>
-              </div>
+              <span className="inline-flex rounded-lg bg-[var(--paper-2)] p-2.5 text-[var(--accent)]">
+                <Icon size={22} />
+              </span>
               <h2 className="mt-5 text-2xl font-extrabold tracking-tight">{section.title}</h2>
               <p className="mt-3 text-sm leading-6 text-[var(--ink-2)]">{section.body}</p>
               <ul className="mt-5 space-y-2">
@@ -133,7 +130,7 @@ export default function ManualPage() {
         })}
       </section>
 
-      <section className="border-y-[1.5px] border-[var(--line)] bg-white">
+      <section className="border-y border-[var(--line)] bg-white">
         <div className="site-wrap py-16">
           <p className="site-eyebrow">examples</p>
           <h2 className="site-h2 mt-3">Small patterns you can run.</h2>

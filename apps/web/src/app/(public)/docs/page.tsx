@@ -40,7 +40,7 @@ export default function DocsIndexPage() {
       <section className="site-wrap grid gap-4 pb-20 md:grid-cols-2">
         {docs.map((doc, index) => (
           <Link key={doc.slug} href={`/docs/${doc.slug}`} className="site-card p-6">
-            <span className="site-chip">{String(index + 1).padStart(2, "0")}</span>
+            <span className="site-chip">Guide {index + 1}</span>
             <h2 className="mt-4 text-xl font-extrabold tracking-tight">{doc.title}</h2>
             <p className="mt-2 text-sm leading-6 text-[var(--ink-2)]">{doc.description}</p>
             <span className="mt-5 inline-flex items-center gap-2 text-sm font-bold">

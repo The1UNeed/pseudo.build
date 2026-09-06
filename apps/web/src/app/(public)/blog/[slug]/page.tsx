@@ -80,7 +80,7 @@ export default async function BlogPostPage({ params }: PageProps) {
         <Link href="/blog" className="inline-flex items-center gap-2 text-sm font-bold">
           <ArrowLeft size={16} /> Blog
         </Link>
-        <p className="mt-8 font-mono text-xs text-[var(--ink-3)]">
+        <p className="mt-8 text-xs font-bold uppercase tracking-[0.14em] text-[var(--ink-3)]">
           {post.date} · {post.readingTime}
         </p>
         <h1 className="site-h1 mt-4 text-[2.4rem] md:text-[3.4rem]">{post.title}</h1>

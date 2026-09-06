@@ -77,7 +77,7 @@ export default async function DocPage({ params }: PageProps) {
         </Link>
         <h1 className="site-h1 mt-6 text-[2.4rem] md:text-[3.4rem]">{doc.title}</h1>
         <p className="site-lede mt-5">{doc.description}</p>
-        <p className="mt-3 font-mono text-xs text-[var(--ink-3)]">updated {doc.updated}</p>
+        <p className="mt-3 text-xs text-[var(--ink-3)]">updated {doc.updated}</p>
 
         <div className="site-prose mt-6">
           {doc.sections.map((section) => (

@@ -22,7 +22,7 @@ export default function LoginPage() {
           {productName}
         </Link>
         <LoginPageClient />
-        <p className="mt-8 max-w-sm text-center font-mono text-xs text-[var(--ink-3)]">
+        <p className="mt-8 max-w-sm text-center text-xs leading-5 text-[var(--ink-3)]">
           Signing in is optional. It only enables cloud sync. By continuing you agree to the{" "}
           <Link href="/terms" className="underline">user agreement</Link> and{" "}
           <Link href="/privacy" className="underline">privacy policy</Link>.

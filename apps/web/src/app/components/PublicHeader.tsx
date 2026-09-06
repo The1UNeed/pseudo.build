@@ -17,9 +17,9 @@ const navItems = [
 
 export function PublicHeader({ active }: PublicHeaderProps) {
   return (
-    <header className="sticky top-0 z-30 border-b-[1.5px] border-[var(--line)] bg-[color-mix(in_srgb,var(--paper)_88%,transparent)] backdrop-blur-md">
+    <header className="site-header">
       <nav className="site-wrap flex h-16 items-center justify-between gap-6">
-        <Link href="/" className="flex items-center gap-2.5 text-[15px] font-extrabold tracking-tight">
+        <Link href="/" className="flex items-center gap-2.5 text-[15px] font-extrabold tracking-tight text-white">
           <BrandMark size={28} />
           {productName}
         </Link>

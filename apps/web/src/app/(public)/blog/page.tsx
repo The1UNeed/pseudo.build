@@ -38,7 +38,7 @@ export default function BlogIndexPage() {
       <section className="site-wrap grid gap-4 pb-20 md:grid-cols-2">
         {posts.map((post) => (
           <Link key={post.slug} href={`/blog/${post.slug}`} className="site-card p-6">
-            <p className="font-mono text-xs text-[var(--ink-3)]">
+            <p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--ink-3)]">
               {post.date} · {post.readingTime}
             </p>
             <h2 className="mt-4 text-2xl font-extrabold leading-snug tracking-tight">{post.title}</h2>
