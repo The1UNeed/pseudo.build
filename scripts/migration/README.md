@@ -39,6 +39,21 @@ users that already exist in the new app (matched by `external_id` or primary ema
 
 ## 2. Workspaces: export from old Convex
 
+If the account lacks backup permission on the old team (`OperationNotPermitted ... deployment:backups:create`),
+dump tables directly instead, then use the JSONL variant in step 3:
+
+```bash
+npx convex data users --prod --limit 1000 --format jsonl > scripts/migration/out/old-users.jsonl
+npx convex data workspaces --prod --limit 1000 --format jsonl > scripts/migration/out/old-workspaces.jsonl
+node scripts/migration/remap-convex-jsonl.mjs scripts/migration/out/user-id-map.json \
+  users=scripts/migration/out/old-users.jsonl:scripts/migration/out/new-users.jsonl \
+  workspaces=scripts/migration/out/old-workspaces.jsonl:scripts/migration/out/new-workspaces.jsonl
+npx convex import --table users --format jsonLines scripts/migration/out/new-users.jsonl
+npx convex import --table workspaces --format jsonLines scripts/migration/out/new-workspaces.jsonl
+```
+
+Snapshot route:
+
 ```bash
 CONVEX_DEPLOY_KEY=$OLD_CONVEX_DEPLOY_KEY npx convex export --path scripts/migration/out/old-export.zip
 ```
