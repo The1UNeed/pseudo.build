@@ -1,6 +1,6 @@
 import { openDB } from "idb";
-import type { WorkspaceState } from "@igcse/workspace";
-import { createEmptyWorkspace, migratePersistedWorkspace } from "@igcse/workspace";
+import type { WorkspaceState } from "@pseudobuild/workspace";
+import { createEmptyWorkspace, migratePersistedWorkspace } from "@pseudobuild/workspace";
 import type { WorkspacePersistenceMode } from "@/lib/platform";
 
 const DB_NAME = "igcse-pseudocode-workspace";

@@ -14,3 +14,7 @@ convex/workspaceSyncSecret.ts
 
 *.log
 .DS_Store
+.env*
+
+# migration artifacts
+scripts/migration/out/

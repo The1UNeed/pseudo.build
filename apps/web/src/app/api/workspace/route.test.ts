@@ -1,4 +1,4 @@
-import { createDefaultWorkspace } from "@igcse/workspace";
+import { createDefaultWorkspace } from "@pseudobuild/workspace";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { authMock, convexClientMock, mutationMock, queryMock } = vi.hoisted(() => {

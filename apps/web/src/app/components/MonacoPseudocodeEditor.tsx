@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import Editor, { BeforeMount, OnMount } from "@monaco-editor/react";
+import "@/lib/monacoLocalLoader";
 import type * as Monaco from "monaco-editor";
 import { LoaderCircle } from "lucide-react";
 import { Diagnostic } from "@/compiler/types";

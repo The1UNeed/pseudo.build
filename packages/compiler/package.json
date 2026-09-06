@@ -1,5 +1,5 @@
 {
-  "name": "@igcse/compiler",
+  "name": "@pseudobuild/compiler",
   "version": "0.1.9",
   "private": true,
   "description": "Pseudocode compiler core — tokenizer, parser, semantics, and AST generation.",

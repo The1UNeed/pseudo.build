@@ -26,7 +26,7 @@ import {
   getChildNodes,
   type WorkspaceNode,
   type WorkspaceState,
-} from "@igcse/workspace";
+} from "@pseudobuild/workspace";
 import packageJson from "../../../package.json";
 import { supportsDesktopNativeDragAndDrop } from "@/lib/appleTouch";
 
@@ -73,7 +73,7 @@ interface SelectionModifierState {
 const CONTEXT_MENU_WIDTH = 248;
 const CONTEXT_MENU_HEIGHT = 320;
 const CONTEXT_MENU_MARGIN = 14;
-const EXPLORER_RELEASE_LABEL = `${packageJson.version}-Preveiw`;
+const EXPLORER_RELEASE_LABEL = `${packageJson.version}-Preview`;
 const DRAG_EDGE_SCROLL_ZONE = 34;
 const DRAG_EDGE_SCROLL_STEP = 14;
 

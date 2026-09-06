@@ -4,7 +4,7 @@ import ManualContent from "@/app/(public)/manual/ManualContent";
 export const metadata: Metadata = {
   title: "Workspace Manual",
   description:
-    "Use the PseudoEditor manual inside the app workspace for pseudocode syntax, control flow, tracing, and examples.",
+    "Use the Pseudo Build manual inside the editor for pseudocode syntax, control flow, tracing, and examples.",
   alternates: {
     canonical: "/app/manual",
   },

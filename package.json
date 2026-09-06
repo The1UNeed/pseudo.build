@@ -1,17 +1,17 @@
 {
-  "name": "pseudoeditor.dev",
+  "name": "pseudo-build",
   "version": "0.1.9",
   "private": true,
-  "description": "PseudoEditor website and browser Pseudocode Compiler app.",
+  "description": "Pseudo Build: free and open-source pseudo code editor and compiler.",
   "author": "Alex",
   "packageManager": "pnpm@10.29.3",
   "scripts": {
-    "dev": "pnpm --filter @pseudoeditor/web dev",
-    "dev:web": "pnpm --filter @pseudoeditor/web dev",
-    "build": "pnpm --filter @pseudoeditor/web build",
+    "dev": "pnpm --filter @pseudobuild/web dev",
+    "dev:web": "pnpm --filter @pseudobuild/web dev",
+    "build": "pnpm --filter @pseudobuild/web build",
     "test": "pnpm -r --if-present run test",
-    "test:compiler": "pnpm --filter @igcse/compiler test",
-    "test:web": "pnpm --filter @pseudoeditor/web test",
+    "test:compiler": "pnpm --filter @pseudobuild/compiler test",
+    "test:web": "pnpm --filter @pseudobuild/web test",
     "build:runtime": "./scripts/build-runtime-wasm.sh",
     "test:runtime": "cargo test -p pseudocode-runtime",
     "typecheck": "pnpm -r --if-present run typecheck",
@@ -19,19 +19,22 @@
   },
   "devDependencies": {
     "convex": "^1.36.1",
-    "next": "16.2.9"
+    "next": "16.3.4"
   },
   "pnpm": {
     "overrides": {
       "@babel/core": "^7.29.6",
-      "dompurify": "^3.4.11",
+      "dompurify": "^3.4.14",
       "js-cookie": "^3.0.7",
       "minimatch@^3.0.0": "3.1.4",
       "minimatch@^9.0.0": "9.0.7",
       "minimatch@^10.0.0": "10.2.3",
-      "postcss": "^8.5.10",
+      "postcss": "^8.5.28",
       "rollup": "^4.59.0",
-      "ws": "^8.21.0"
+      "ws": "^8.21.0",
+      "nanoid@^3.0.0": "3.3.18",
+      "sharp": "^0.35.4",
+      "browserslist": "^4.28.9"
     },
     "onlyBuiltDependencies": [
       "dtrace-provider",
@@ -39,5 +42,8 @@
       "sharp",
       "unrs-resolver"
     ]
+  },
+  "dependencies": {
+    "svix": "^2.3.0"
   }
 }

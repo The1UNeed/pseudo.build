@@ -2,31 +2,36 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   ArrowRight,
-  BookOpen,
-  CheckCircle2,
+  ArrowUpRight,
+  Bug,
   Cloud,
   Code2,
-  FileText,
   GitBranch,
+  Lock,
   Play,
-  TerminalSquare,
+  ScrollText,
 } from "lucide-react";
 import { PublicHeader } from "@/app/components/PublicHeader";
 import {
+  authorName,
   docs,
   faqItems,
+  githubUrl,
   homeSeoDescription,
   homeSeoTitle,
   organizationName,
   posts,
   productName,
+  productSlogan,
   productTagline,
   seoKeywords,
   siteUrl,
 } from "@/lib/seo-content";
 
 export const metadata: Metadata = {
-  title: homeSeoTitle,
+  title: {
+    absolute: homeSeoTitle,
+  },
   description: homeSeoDescription,
   keywords: seoKeywords,
   alternates: {
@@ -38,36 +43,52 @@ export const metadata: Metadata = {
     siteName: productName,
     title: homeSeoTitle,
     description: homeSeoDescription,
-    images: [{ url: "/icon.png?v=2", width: 512, height: 512, alt: "PseudoEditor app icon" }],
+    images: [{ url: "/icon.png?v=3", width: 512, height: 512, alt: "Pseudo Build app icon" }],
   },
   twitter: {
     card: "summary",
     title: homeSeoTitle,
     description: homeSeoDescription,
-    images: ["/icon.png?v=2"],
+    images: ["/icon.png?v=3"],
   },
 };
 
 const features = [
   {
     icon: Code2,
-    title: "Strict pseudocode compiler",
-    body: "Tokenize, parse, validate, and compile structured pseudocode with line-level diagnostics.",
+    index: "01",
+    title: "Strict compiler",
+    body: "Tokenize, parse, validate, and compile structured pseudocode with line and column diagnostics that point at the real mistake.",
   },
   {
     icon: Play,
-    title: "Fast browser execution",
-    body: "Run pseudocode directly in the browser terminal, including interactive INPUT programs.",
+    index: "02",
+    title: "Runs in the browser",
+    body: "A Rust runtime compiled to WebAssembly executes your program on your machine, including interactive INPUT prompts.",
   },
   {
     icon: GitBranch,
-    title: "Flowchart support",
-    body: "Switch between source and visual control-flow thinking for decisions, loops, and processes.",
+    index: "03",
+    title: "Flowchart view",
+    body: "Switch between source and a generated flowchart to reason about decisions, loops, and processes visually.",
+  },
+  {
+    icon: Bug,
+    index: "04",
+    title: "Debug with intent",
+    body: "Read the first diagnostic, fix it, run again. Diagnostics are ordered so cascading errors do not bury the cause.",
   },
   {
     icon: Cloud,
-    title: "Workspace saving",
-    body: "Use local browser storage in development and signed-in cloud workspace sync on pseudoeditor.dev.",
+    index: "05",
+    title: "Workspaces that follow you",
+    body: "Work in memory, in local browser storage, or sign in to sync a multi-file workspace across devices.",
+  },
+  {
+    icon: Lock,
+    index: "06",
+    title: "Open and auditable",
+    body: "Every line of the editor, compiler, and runtime is published under the GPL v3. No trackers, no paywall.",
   },
 ];
 
@@ -77,32 +98,33 @@ const structuredData = [
     "@type": "SoftwareApplication",
     name: productName,
     alternateName: [
-      "Pseudocode Compiler",
-      "Pseudocode Editor",
-      "IGCSE Pseudocode Compiler",
-      "IGCSE Pseudocode Editor",
+      "Pseudo Build editor",
+      "Pseudo code editor and compiler",
+      "Pseudocode editor",
+      "Pseudocode compiler",
     ],
     applicationCategory: "EducationalApplication",
     operatingSystem: "Web",
     url: siteUrl,
     description: productTagline,
-    creator: {
-      "@type": "Organization",
-      name: organizationName,
+    author: {
+      "@type": "Person",
+      name: authorName,
     },
     publisher: {
       "@type": "Organization",
       name: organizationName,
     },
     isAccessibleForFree: true,
+    license: "https://www.gnu.org/licenses/gpl-3.0.html",
     keywords: seoKeywords.join(", "),
     featureList: [
       "Pseudocode editor",
       "Pseudocode compiler",
       "Browser pseudocode runner",
       "Line-level compiler diagnostics",
-      "Flowchart support",
-      "IGCSE-style pseudocode practice",
+      "Flowchart generation",
+      "Multi-file workspaces with cloud sync",
     ],
     offers: {
       "@type": "Offer",
@@ -114,16 +136,10 @@ const structuredData = [
     "@context": "https://schema.org",
     "@type": "WebSite",
     name: productName,
-    alternateName: ["PseudoEditor and Compiler", "Pseudocode Editor and Compiler"],
     url: siteUrl,
     publisher: {
       "@type": "Organization",
       name: organizationName,
-    },
-    potentialAction: {
-      "@type": "SearchAction",
-      target: `${siteUrl}/docs?query={search_term_string}`,
-      "query-input": "required name=search_term_string",
     },
   },
   {
@@ -149,197 +165,183 @@ function JsonLd() {
   );
 }
 
-function EditorBackdrop() {
+function HeroWindow() {
   return (
-    <div className="absolute inset-0 overflow-hidden" aria-hidden="true">
-      <div className="absolute inset-0 bg-[#101214]" />
-      <div className="absolute inset-x-0 top-0 h-20 bg-[#0b6e4f]" />
-      <div className="absolute left-1/2 top-16 w-[min(1120px,92vw)] -translate-x-1/2 overflow-hidden rounded-lg border border-white/14 bg-[#191d1d] shadow-2xl">
-        <div className="flex h-10 items-center gap-2 border-b border-white/10 bg-[#242827] px-4">
-          <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
-          <span className="h-3 w-3 rounded-full bg-[#febc2e]" />
-          <span className="h-3 w-3 rounded-full bg-[#28c840]" />
-          <span className="ml-4 text-xs font-semibold text-white/64">main.pseudo</span>
-        </div>
-        <div className="grid min-h-[520px] grid-cols-[220px_1fr]">
-          <aside className="hidden border-r border-white/10 bg-[#222625] p-4 text-xs text-white/55 md:block">
-            <div className="mb-4 font-semibold uppercase text-white/80">Workspace</div>
-            <div className="space-y-2">
-              <div className="rounded bg-white/8 px-3 py-2 text-white">main.pseudo</div>
-              <div className="px-3 py-2">loops.pseudo</div>
-              <div className="px-3 py-2">array-search.pseudo</div>
-            </div>
-          </aside>
-          <div className="grid grid-rows-[1fr_150px]">
-            <pre className="m-0 overflow-hidden p-6 font-mono text-sm leading-7 text-[#e5e5ea] opacity-90 md:text-base">
-{`DECLARE Number : INTEGER
-DECLARE Total : INTEGER
-Total <- 0
-
-FOR Number <- 1 TO 5
-    Total <- Total + Number
-NEXT Number
-
-OUTPUT "Total = ", Total`}
-            </pre>
-            <div className="border-t border-white/10 bg-[#111313] p-4 font-mono text-sm text-[#30d158]">
-              <div className="mb-2 flex items-center gap-2 text-white/60">
-                <TerminalSquare size={16} /> Terminal
-              </div>
-              <div>&gt; Total = 15</div>
-            </div>
+    <div className="site-window site-reveal site-reveal-3" aria-hidden="true">
+      <div className="site-window-bar">
+        <span className="site-window-dot" />
+        <span className="site-window-dot" />
+        <span className="site-window-dot" />
+        <span className="ml-3">main.pseudo</span>
+        <span className="ml-auto text-[#e8590c]">compiled in 3 ms</span>
+      </div>
+      <div className="grid md:grid-cols-[150px_1fr]">
+        <aside className="hidden border-r border-white/10 p-4 font-mono text-[11px] text-[#a39c8c] md:block">
+          <p className="mb-3 text-[#7a756b]">workspace/</p>
+          <p className="rounded bg-white/10 px-2 py-1 text-white">main.pseudo</p>
+          <p className="px-2 py-1">validate.pseudo</p>
+          <p className="px-2 py-1">search.pseudo</p>
+        </aside>
+        <div>
+          <pre className="m-0 overflow-x-auto p-5 font-mono text-[13px] leading-7">
+            <span className="site-token-cmt">{"// Sum the first five integers"}</span>
+            {"\n"}
+            <span className="site-token-kw">DECLARE</span> Number : <span className="site-token-type">INTEGER</span>
+            {"\n"}
+            <span className="site-token-kw">DECLARE</span> Total : <span className="site-token-type">INTEGER</span>
+            {"\n"}
+            Total <span className="site-token-kw">{"<-"}</span> <span className="site-token-num">0</span>
+            {"\n\n"}
+            <span className="site-token-kw">FOR</span> Number <span className="site-token-kw">{"<-"}</span>{" "}
+            <span className="site-token-num">1</span> <span className="site-token-kw">TO</span>{" "}
+            <span className="site-token-num">5</span>
+            {"\n"}
+            {"    "}Total <span className="site-token-kw">{"<-"}</span> Total + Number
+            {"\n"}
+            <span className="site-token-kw">NEXT</span> Number
+            {"\n\n"}
+            <span className="site-token-kw">OUTPUT</span> <span className="site-token-str">{'"Total = "'}</span>, Total
+          </pre>
+          <div className="border-t border-white/10 bg-black/30 p-4 font-mono text-[12px]">
+            <p className="text-[#7a756b]">$ run main.pseudo</p>
+            <p className="mt-1 text-[#b5e08a]">Total = 15</p>
           </div>
         </div>
       </div>
-      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(16,18,20,0.94),rgba(16,18,20,0.76)_45%,rgba(16,18,20,0.22))]" />
     </div>
   );
 }
 
 export default function LandingPage() {
   return (
-    <main className="min-h-screen bg-[#f7f8f3] text-[#151716]">
+    <main>
       <JsonLd />
-      <section className="relative min-h-[88vh] overflow-hidden text-white">
-        <EditorBackdrop />
-        <PublicHeader />
+      <PublicHeader />
 
-        <div className="relative z-10 mx-auto flex min-h-[calc(88vh-80px)] max-w-7xl items-center px-5 pb-20 pt-16 md:px-8">
-          <div className="max-w-2xl">
-            <p className="mb-5 inline-flex rounded-md border border-white/18 bg-white/8 px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-[#dce8d1]">
-              Free pseudocode compiler and editor
-            </p>
-            <h1 className="text-5xl font-black leading-[1.02] md:text-7xl">
-              PseudoEditor and Compiler
-            </h1>
-            <p className="mt-6 max-w-xl text-lg leading-8 text-white/78 md:text-xl">
-              Built by Lumora Studio, PseudoEditor is a free, open-source pseudocode compiler and editor for writing, running, debugging, and learning IGCSE-style pseudocode anywhere.
-            </p>
-            <div className="mt-9 flex flex-wrap gap-3">
-              <Link
-                href="/app"
-                className="cta-primary group inline-flex h-12 items-center gap-2 rounded-md bg-[#dce8d1] px-5 text-sm font-black text-[#111313] hover:bg-white"
-              >
-                Launch editor
-                <Play
-                  size={17}
-                  className="transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:scale-110"
-                />
-              </Link>
-              <Link
-                href="/docs"
-                className="inline-flex h-12 items-center gap-2 rounded-md border border-white/22 px-5 text-sm font-bold text-white transition-all duration-300 hover:bg-white/10 hover:border-white/35"
-              >
-                Read docs <BookOpen size={17} />
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="border-b border-[#d7ddd0] bg-[#eef3e9] px-5 py-14 md:px-8">
-        <div className="mx-auto grid max-w-7xl gap-4 md:grid-cols-4">
-          {features.map((feature) => {
-            const Icon = feature.icon;
-            return (
-              <article
-                key={feature.title}
-                className="feature-card rounded-lg border border-[#d7ddd0] bg-white p-5 shadow-sm"
-              >
-                <div className="mb-5 inline-flex rounded-lg bg-[#eef3e9] p-2.5">
-                  <Icon className="text-[#0b6e4f]" size={22} />
-                </div>
-                <h2 className="text-lg font-black">{feature.title}</h2>
-                <p className="mt-3 text-sm leading-6 text-[#4b5650]">{feature.body}</p>
-              </article>
-            );
-          })}
-        </div>
-      </section>
-
-      <section className="px-5 py-16 md:px-8">
-        <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[0.9fr_1.1fr]">
-          <div>
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-[#b3412e]">
-              Learn while you build
-            </p>
-            <h2 className="mt-3 text-3xl font-black md:text-5xl">
-              Docs and examples beside the app.
-            </h2>
-            <p className="mt-5 max-w-xl leading-7 text-[#4b5650]">
-              The new pseudoeditor.dev site gives search engines useful learning pages while giving students a direct path from explanation to practice.
-            </p>
-            <Link
-              href="/manual"
-              className="group mt-7 inline-flex items-center gap-2 rounded-md bg-[#151716] px-4 py-3 text-sm font-bold text-white transition-all duration-300 hover:bg-[#1f2421] hover:shadow-[0_4px_12px_rgba(0,0,0,0.15)] active:translate-y-[1px] active:scale-[0.98]"
-            >
-              Open manual
-              <FileText
-                size={16}
-                className="transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:translate-x-0.5"
-              />
+      <section className="site-wrap grid items-center gap-12 py-16 md:py-24 lg:grid-cols-[1.05fr_1fr]">
+        <div>
+          <p className="site-eyebrow site-reveal">free · open source · GPL-3.0</p>
+          <h1 className="site-h1 site-reveal site-reveal-2 mt-5">
+            Build pseudo code
+            <br />
+            <span className="text-[var(--accent)]">that actually runs.</span>
+          </h1>
+          <p className="site-lede site-reveal site-reveal-3 mt-6 max-w-xl">{productSlogan} Write structured pseudocode, compile it with real diagnostics, and run it in your browser. Build your pseudo code project freely and creatively.</p>
+          <div className="site-reveal site-reveal-4 mt-8 flex flex-wrap gap-3">
+            <Link href="/app" className="site-btn site-btn-accent">
+              Start building <Play size={16} />
+            </Link>
+            <Link href="/docs" className="site-btn site-btn-ghost">
+              Read the docs <ArrowRight size={16} />
             </Link>
           </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            {docs.slice(0, 4).map((doc) => (
-              <Link
-                key={doc.slug}
-                href={`/docs/${doc.slug}`}
-                className="doc-card rounded-lg border border-[#d7ddd0] bg-white p-5"
-              >
-                <CheckCircle2 className="mb-4 text-[#1f4e79]" size={22} />
-                <h3 className="font-black">{doc.title}</h3>
-                <p className="mt-2 text-sm leading-6 text-[#5c665f]">{doc.description}</p>
-              </Link>
-            ))}
+          <p className="site-reveal site-reveal-4 mt-6 font-mono text-xs text-[var(--ink-3)]">
+            No account needed. Sign in only if you want cloud sync.
+          </p>
+        </div>
+        <HeroWindow />
+      </section>
+
+      <section className="border-y-[1.5px] border-[var(--line)] bg-[var(--paper-2)]/70">
+        <div className="site-wrap py-16 md:py-20">
+          <p className="site-eyebrow">what you get</p>
+          <h2 className="site-h2 mt-3 max-w-2xl">An editor, a compiler, and a runtime. Nothing to install.</h2>
+          <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {features.map((feature) => {
+              const Icon = feature.icon;
+              return (
+                <article key={feature.title} className="site-card site-card-hover p-6">
+                  <div className="flex items-center justify-between">
+                    <span className="inline-flex rounded-md border-[1.5px] border-[var(--ink)] bg-[var(--paper)] p-2">
+                      <Icon size={20} />
+                    </span>
+                    <span className="font-mono text-xs text-[var(--ink-3)]">{feature.index}</span>
+                  </div>
+                  <h3 className="mt-5 text-lg font-extrabold tracking-tight">{feature.title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-[var(--ink-2)]">{feature.body}</p>
+                </article>
+              );
+            })}
           </div>
         </div>
       </section>
 
-      <section className="border-y border-[#d7ddd0] bg-white px-5 py-16 md:px-8">
-        <div className="mx-auto max-w-7xl">
+      <section className="site-wrap grid gap-10 py-16 md:py-20 lg:grid-cols-[0.9fr_1.1fr]">
+        <div>
+          <p className="site-eyebrow">learn while you build</p>
+          <h2 className="site-h2 mt-3">Docs that sit next to the editor.</h2>
+          <p className="site-lede mt-5 max-w-lg">
+            Short, practical guides for the syntax the compiler accepts. Read one, then try it in the editor a click away.
+          </p>
+          <Link href="/manual" className="site-btn mt-7">
+            Open the manual <ScrollText size={16} />
+          </Link>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {docs.slice(0, 4).map((doc, index) => (
+            <Link key={doc.slug} href={`/docs/${doc.slug}`} className="site-card p-5">
+              <span className="site-chip">doc {String(index + 1).padStart(2, "0")}</span>
+              <h3 className="mt-4 font-extrabold tracking-tight">{doc.title}</h3>
+              <p className="mt-2 text-sm leading-6 text-[var(--ink-2)]">{doc.description}</p>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <section className="border-y-[1.5px] border-[var(--line)] bg-white">
+        <div className="site-wrap py-16 md:py-20">
           <div className="flex flex-wrap items-end justify-between gap-5">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-[#0b6e4f]">Blog</p>
-              <h2 className="mt-3 text-3xl font-black md:text-5xl">Pseudocode practice notes.</h2>
+              <p className="site-eyebrow">blog</p>
+              <h2 className="site-h2 mt-3">Notes on writing better pseudocode.</h2>
             </div>
-            <Link
-              href="/blog"
-              className="group inline-flex items-center gap-2 text-sm font-black text-[#0b6e4f] transition-all duration-300 hover:gap-3"
-            >
-              View all posts
-              <ArrowRight
-                size={16}
-                className="transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover:translate-x-0.5"
-              />
+            <Link href="/blog" className="inline-flex items-center gap-2 text-sm font-bold underline underline-offset-4">
+              All posts <ArrowRight size={16} />
             </Link>
           </div>
           <div className="mt-8 grid gap-4 md:grid-cols-3">
             {posts.slice(0, 3).map((post) => (
-              <Link
-                key={post.slug}
-                href={`/blog/${post.slug}`}
-                className="blog-card rounded-lg border border-[#d7ddd0] bg-[#f7f8f3] p-5"
-              >
-                <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#b3412e]">{post.readingTime}</p>
-                <h3 className="mt-3 text-xl font-black">{post.title}</h3>
-                <p className="mt-3 text-sm leading-6 text-[#5c665f]">{post.description}</p>
+              <Link key={post.slug} href={`/blog/${post.slug}`} className="site-card bg-[var(--paper)] p-5">
+                <p className="font-mono text-xs text-[var(--ink-3)]">{post.readingTime}</p>
+                <h3 className="mt-3 text-lg font-extrabold leading-snug tracking-tight">{post.title}</h3>
+                <p className="mt-3 text-sm leading-6 text-[var(--ink-2)]">{post.description}</p>
               </Link>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="px-5 py-16 md:px-8">
-        <div className="mx-auto max-w-4xl">
-          <h2 className="text-3xl font-black md:text-4xl">Questions</h2>
-          <div className="mt-6 divide-y divide-[#d7ddd0] rounded-lg border border-[#d7ddd0] bg-white">
+      <section className="site-wrap grid gap-10 py-16 md:py-20 lg:grid-cols-[1fr_1fr]">
+        <div>
+          <p className="site-eyebrow">questions</p>
+          <h2 className="site-h2 mt-3">Answers before you ask.</h2>
+          <div className="mt-8 divide-y divide-[var(--line)] border-y-[1.5px] border-[var(--line)]">
             {faqItems.map((item) => (
-              <details key={item.question} className="group p-5">
-                <summary className="cursor-pointer font-black transition-colors duration-200 hover:text-[#0b6e4f]">{item.question}</summary>
-                <p className="mt-3 leading-7 text-[#4b5650]">{item.answer}</p>
+              <details key={item.question} className="group py-4">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 font-bold">
+                  {item.question}
+                  <span className="font-mono text-[var(--accent)] transition-transform group-open:rotate-45">+</span>
+                </summary>
+                <p className="mt-3 leading-7 text-[var(--ink-2)]">{item.answer}</p>
               </details>
             ))}
+          </div>
+        </div>
+        <div className="flex flex-col justify-between rounded-[var(--radius)] border-[1.5px] border-[var(--ink)] bg-[var(--ink)] p-8 text-[var(--paper)] shadow-[6px_6px_0_0_var(--accent)]">
+          <div>
+            <p className="font-mono text-xs text-[#a39c8c]">// open source</p>
+            <h2 className="mt-3 text-3xl font-extrabold tracking-tight">Read the code. Run it yourself. Make it yours.</h2>
+            <p className="mt-4 leading-7 text-[#b9b2a3]">
+              Pseudo Build is licensed under the GNU GPL v3. Clone the repository, run it locally, file issues, and send pull requests.
+            </p>
+          </div>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <a href={githubUrl} target="_blank" rel="noopener noreferrer" className="site-btn site-btn-accent">
+              View on GitHub <ArrowUpRight size={16} />
+            </a>
+            <Link href="/security" className="site-btn site-btn-ghost border-[var(--paper)] text-[var(--paper)] hover:bg-white/10">
+              Security policy
+            </Link>
           </div>
         </div>
       </section>

@@ -1,32 +1,38 @@
-export const siteUrl = "https://pseudoeditor.dev";
+export const siteUrl = "https://pseudo.build";
 
-export const productName = "PseudoEditor";
+export const productName = "Pseudo Build";
 
-export const organizationName = "Lumora Studio";
+export const organizationName = "Pseudo Build";
 
-export const homeSeoTitle = "PseudoEditor and Compiler - Pseudocode Editor";
+export const authorName = "Alex Xin Liu";
+
+export const githubUrl = "https://github.com/The1UNeed/pseudo.build";
+
+export const productSlogan = "Free and open-source pseudo code editor and compiler.";
+
+export const homeSeoTitle = "Pseudo Build - Free and open-source pseudo code editor and compiler";
 
 export const homeSeoDescription =
-  "Built by Lumora Studio, PseudoEditor is a free, open-source, cross-platform pseudocode compiler and editor to write, run, debug, and learn IGCSE pseudocode.";
+  "Pseudo Build is a free and open-source pseudo code editor and compiler. Write, compile, run, and debug pseudocode in the browser and build your pseudo code project freely and creatively.";
 
 export const seoKeywords = [
-  "PseudoEditor",
+  "Pseudo Build",
+  "pseudo code editor",
+  "pseudo code compiler",
   "pseudocode editor",
   "pseudocode compiler",
   "free pseudocode compiler",
   "open source pseudocode editor",
-  "cross-platform pseudocode editor",
-  "IGCSE pseudocode",
-  "IGCSE pseudocode compiler",
   "browser pseudocode editor",
   "browser pseudocode compiler",
-  "pseudo code editor",
-  "pseudo code compiler",
+  "IGCSE pseudocode",
+  "IGCSE pseudocode compiler",
   "Cambridge pseudocode",
+  "pseudocode flowchart",
 ];
 
 export const productTagline =
-  "A free, open-source pseudocode compiler and editor for writing, running, debugging, and learning IGCSE-style pseudocode in the browser.";
+  "A free and open-source pseudo code editor and compiler for writing, running, debugging, and learning structured pseudocode in the browser.";
 
 export type SeoDoc = {
   slug: string;
@@ -56,7 +62,7 @@ export type SeoPost = {
 export const docs: SeoDoc[] = [
   {
     slug: "getting-started",
-    title: "Getting started with PseudoEditor",
+    title: "Getting started with Pseudo Build",
     description:
       "Open the browser editor, write your first pseudocode program, compile it, and run it directly in the browser.",
     updated: "2026-05-04",
@@ -64,7 +70,7 @@ export const docs: SeoDoc[] = [
       {
         heading: "Start in the browser",
         body: [
-          "Open the app, create or select a pseudocode document, and type directly into the editor. PseudoEditor saves local work during development and supports cloud workspace sync on the deployed site when you sign in.",
+          "Open the app, create or select a pseudocode document, and type directly into the editor. Pseudo Build saves local work during development and supports cloud workspace sync on the deployed site when you sign in.",
           "Use the Run button to compile the current file. Diagnostics appear with line and column details when the compiler finds syntax or semantic problems.",
         ],
       },
@@ -108,7 +114,7 @@ OUTPUT Total`,
     slug: "variables-input-output",
     title: "Variables, input, and output",
     description:
-      "Learn how PseudoEditor handles declarations, assignment, INPUT prompts, and OUTPUT statements.",
+      "Learn how Pseudo Build handles declarations, assignment, INPUT prompts, and OUTPUT statements.",
     updated: "2026-05-04",
     sections: [
       {
@@ -198,7 +204,7 @@ OUTPUT Scores[1]`,
     slug: "flowcharts",
     title: "Flowcharts from pseudocode",
     description:
-      "Use PseudoEditor's flowchart mode to reason about process, input/output, and decision nodes.",
+      "Use the Pseudo Build flowchart mode to reason about process, input/output, and decision nodes.",
     updated: "2026-05-04",
     sections: [
       {
@@ -214,13 +220,13 @@ OUTPUT Scores[1]`,
     slug: "saving-workspaces",
     title: "Saving browser workspaces",
     description:
-      "Understand how local browser storage and signed-in cloud sync work in PseudoEditor.",
+      "Understand how local browser storage and signed-in cloud sync work in Pseudo Build.",
     updated: "2026-05-04",
     sections: [
       {
         heading: "Local and cloud modes",
         body: [
-          "On localhost, PseudoEditor saves to browser storage. On pseudoeditor.dev, signed-in users can save workspaces through Clerk authentication and Convex cloud sync.",
+          "On localhost, Pseudo Build saves to browser storage. On pseudo.build, signed-in users can save workspaces through Clerk authentication and Convex cloud sync.",
           "Signed-out production sessions can edit in memory, but signing in is required before cloud saving.",
         ],
       },
@@ -373,24 +379,29 @@ export const posts: SeoPost[] = [
 
 export const faqItems = [
   {
-    question: "Is PseudoEditor the same as Pseudocode Compiler?",
+    question: "What is Pseudo Build?",
     answer:
-      "PseudoEditor is the website and browser home for the Pseudocode Compiler app. The compiler, editor, runner, manual, and workspace tools are available in the browser app.",
+      "Pseudo Build is a free and open-source pseudo code editor and compiler. The editor, compiler, runner, flowchart view, manual, and workspace tools all run in the browser app.",
   },
   {
     question: "Can I run pseudocode in the browser?",
     answer:
-      "Yes. PseudoEditor compiles supported pseudocode to an AST and runs it in the browser runtime, including interactive INPUT prompts.",
+      "Yes. Pseudo Build compiles supported pseudocode to an AST and runs it in the browser runtime, including interactive INPUT prompts.",
   },
   {
     question: "Does the browser version save my work?",
     answer:
-      "Local development saves to browser storage. On pseudoeditor.dev, signed-in users can save workspaces with Clerk authentication and Convex cloud sync.",
+      "Local development saves to browser storage. On pseudo.build, signed-in users can save workspaces with Clerk authentication and Convex cloud sync.",
   },
   {
     question: "Is this only for IGCSE Computer Science?",
     answer:
       "The syntax and manual are designed around IGCSE-style pseudocode practice, but the editor is useful for anyone learning structured algorithms.",
+  },
+  {
+    question: "Is Pseudo Build really free and open source?",
+    answer:
+      "Yes. Pseudo Build is free to use and the source code is published under the GNU GPL v3 on GitHub. You can read it, run it yourself, and contribute.",
   },
 ];
 

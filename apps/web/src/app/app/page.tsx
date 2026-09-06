@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Image from "next/image";
+import { BrandMark } from "@/app/components/BrandMark";
 import {
   DragEvent,
   FormEvent,
@@ -41,7 +42,7 @@ import {
 import {
   getNodePath,
   type WorkspaceEditorPanelInstance,
-} from "@igcse/workspace";
+} from "@pseudobuild/workspace";
 import { Breadcrumbs } from "@/app/components/Breadcrumbs";
 import { WorkspaceSidebar } from "@/app/components/WorkspaceSidebar";
 import ManualContent from "@/app/(public)/manual/ManualContent";
@@ -69,6 +70,13 @@ import {
 } from "@/lib/theme";
 
 /* ── constants ── */
+const APP_LEGAL_LINKS = [
+  { href: "/terms", label: "User agreement" },
+  { href: "/privacy", label: "Privacy" },
+  { href: "/security", label: "Security" },
+  { href: "https://github.com/The1UNeed/pseudo.build", label: "GitHub" },
+] as const;
+
 
 const DEFAULT_SOURCE = `DECLARE Number : INTEGER
 DECLARE Total : INTEGER
@@ -1310,14 +1318,14 @@ export default function HomePage() {
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--surface)]">
             <Image
               src="/branding/app-icon-128.png"
-              alt="Pseudocode Compiler"
+              alt="Pseudo Build"
               width={44}
               height={44}
               className="h-11 w-11"
             />
           </div>
           <h2 className="mt-5 text-2xl font-semibold text-[var(--text)]">
-            Welcome to Pseudocode Compiler
+            Welcome to Pseudo Build
           </h2>
           <p className="mt-3 max-w-sm text-sm leading-6 text-[var(--text2)]">
             This workspace starts empty on purpose. Add a pseudocode file from the explorer, then write, compile, and run from there.
@@ -1601,7 +1609,7 @@ export default function HomePage() {
                 </div>
 
                 <div className="flex flex-1 items-center justify-center">
-                  <p className="text-[13px] font-medium text-[var(--text2)]">Pseudocode Compiler</p>
+                  <p className="text-[13px] font-medium text-[var(--text2)]">Editor</p>
                 </div>
 
                 <div className="flex flex-1 items-center justify-end gap-3">
@@ -1808,7 +1816,7 @@ export default function HomePage() {
                         SETTINGS
                       </p>
                       <h2 className="mt-3 text-[28px] font-semibold text-[var(--text)]">
-                        Pseudocode Compiler
+                        Pseudo Build
                       </h2>
                       <p className="mt-4 max-w-xs text-sm leading-6 text-[var(--text2)]">
                         Open the manual, review the language guide, and keep the workspace controls one tap away.
@@ -2003,16 +2011,21 @@ export default function HomePage() {
                 </div>
                 <div className="mt-6 border-t border-[var(--separator)] pt-4 text-center">
                   <p className="text-xs text-[var(--text3)]">
-                    © 2026 Lumora Studio. All rights reserved.
+                    © {new Date().getFullYear()} Pseudo Build. Free and open source under the GNU GPL v3.
                   </p>
-                  <a
-                    href="https://www.lumorastudio.top/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-1 inline-block text-xs text-blue-500 hover:text-blue-600 hover:underline transition"
-                  >
-                    Learn more……
-                  </a>
+                  <div className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs">
+                    {APP_LEGAL_LINKS.map((link) => (
+                      <a
+                        key={link.href}
+                        href={link.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[var(--accent)] hover:underline"
+                      >
+                        {link.label}
+                      </a>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -2039,36 +2052,20 @@ export default function HomePage() {
         <div className={`flex items-center gap-2 ${isDesktopShell ? "w-[80px]" : "w-auto"}`}>
           {isDesktopShell ? null : (
             <a
-              href="https://www.lumorastudio.top/"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="/"
               className="flex items-center gap-2 transition hover:opacity-80"
-              aria-label="Lumora Studio"
+              aria-label="Pseudo Build home"
             >
-              <svg
-                viewBox="0 0 1024 1024"
-                className="h-5 w-5 text-[var(--text2)]"
-                fill="currentColor"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M 460.015625 710.820313 L 732.5625 710.820313 L 748 648.90625 L 748 646.820313 L 477.164063 646.820313 L 599.296875 191 L 533.039063 191 L 393.710938 711 L 459.96875 711 Z"
-                />
-                <path
-                  fillRule="evenodd"
-                  d="M 719.34375 769.007813 L 490.796875 769.054688 L 387 769 L 386.9375 768.367188 C 361.493561 764.306641 342 741.343506 342 713.623291 C 342 706.989502 343.116394 700.628174 345.163605 694.733276 L 411.570313 447.6875 L 480.648438 191 L 414.398438 191 L 321.75 536.75 L 322.070313 536.828125 L 280.226563 692.640625 C 278.773163 700.176086 278 707.994141 278 716 C 278 780.61731 328.36795 833 390.5 833 L 394.03125 832.945313 L 703.390625 833 Z"
-                />
-              </svg>
+              <BrandMark size={20} />
               <span className="text-xs font-semibold tracking-[0.12em] text-[var(--text2)]">
-                Lumora Studio
+                Pseudo Build
               </span>
             </a>
           )}
         </div>
 
         <div className="flex-1" />
-        <p className="text-[13px] font-medium text-[var(--text2)]">Pseudocode Compiler</p>
+        <p className="text-[13px] font-medium text-[var(--text2)]">Editor</p>
         <div className="flex-1" />
 
         {/* Toolbar */}
@@ -2437,16 +2434,21 @@ export default function HomePage() {
             </div>
             <div className="mt-6 border-t border-[var(--separator)] pt-4 text-center">
               <p className="text-xs text-[var(--text3)]">
-                © 2026 Lumora Studio. All rights reserved.
+                © {new Date().getFullYear()} Pseudo Build. Free and open source under the GNU GPL v3.
               </p>
-              <a
-                href="https://www.lumorastudio.top/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-1 inline-block text-xs text-blue-500 hover:text-blue-600 hover:underline transition"
-              >
-                Learn more……
-              </a>
+              <div className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs">
+                {APP_LEGAL_LINKS.map((link) => (
+                  <a
+                    key={link.href}
+                    href={link.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-[var(--accent)] hover:underline"
+                  >
+                    {link.label}
+                  </a>
+                ))}
+              </div>
             </div>
           </div>
         </div>

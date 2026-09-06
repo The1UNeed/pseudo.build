@@ -6,7 +6,7 @@ export default function PublicLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <div className="public-motion-shell">
+    <div className="site">
       {children}
       <Footer />
     </div>

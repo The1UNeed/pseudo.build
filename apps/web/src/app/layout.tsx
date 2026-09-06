@@ -2,23 +2,25 @@ import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import {
+  authorName,
   homeSeoDescription,
   homeSeoTitle,
   organizationName,
   productName,
   seoKeywords,
+  siteUrl,
 } from "@/lib/seo-content";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://pseudoeditor.dev"),
+  metadataBase: new URL(siteUrl),
   title: {
     default: homeSeoTitle,
-    template: "%s | PseudoEditor",
+    template: `%s | ${productName}`,
   },
   description: homeSeoDescription,
   applicationName: productName,
-  authors: [{ name: organizationName }],
+  authors: [{ name: authorName }],
   creator: organizationName,
   publisher: organizationName,
   keywords: seoKeywords,
@@ -27,25 +29,25 @@ export const metadata: Metadata = {
   },
   openGraph: {
     type: "website",
-    url: "https://pseudoeditor.dev",
+    url: siteUrl,
     siteName: productName,
     title: homeSeoTitle,
     description: homeSeoDescription,
-    images: [{ url: "/icon.png?v=2", width: 512, height: 512, alt: "PseudoEditor app icon" }],
+    images: [{ url: "/icon.png?v=3", width: 512, height: 512, alt: "Pseudo Build app icon" }],
   },
   twitter: {
     card: "summary",
     title: homeSeoTitle,
     description: homeSeoDescription,
-    images: ["/icon.png?v=2"],
+    images: ["/icon.png?v=3"],
   },
   icons: {
     icon: [
-      { url: "/favicon.ico?v=2" },
-      { url: "/icon.png?v=2", type: "image/png" },
+      { url: "/favicon.ico?v=3" },
+      { url: "/icon.png?v=3", type: "image/png" },
     ],
-    shortcut: [{ url: "/favicon.ico?v=2" }],
-    apple: [{ url: "/icon.png?v=2" }],
+    shortcut: [{ url: "/favicon.ico?v=3" }],
+    apple: [{ url: "/icon.png?v=3" }],
   },
 };
 

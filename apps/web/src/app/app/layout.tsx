@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { ClerkProvider } from "@/lib/auth-components";
 
 export const metadata: Metadata = {
-  title: "Browser Pseudocode Compiler",
+  title: "Editor",
   description:
-    "Open the full PseudoEditor browser app to write, compile, run, and debug pseudocode with workspace tools.",
+    "Open the Pseudo Build editor to write, compile, run, and debug pseudocode with multi-file workspaces.",
   alternates: {
     canonical: "/app",
   },

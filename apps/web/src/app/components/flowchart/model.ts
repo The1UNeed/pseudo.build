@@ -1,6 +1,6 @@
 import type { Connection, Edge, Node } from "@xyflow/react";
 import { MarkerType } from "@xyflow/react";
-import { parseSource } from "@igcse/compiler";
+import { parseSource } from "@pseudobuild/compiler";
 import type {
   ArrayAccessNode,
   ExpressionNode,
@@ -10,7 +10,7 @@ import type {
   SourceSpan,
   StatementNode,
   WhileStatementNode,
-} from "@igcse/compiler/types";
+} from "@pseudobuild/compiler/types";
 import { FlowchartNodeData, FlowchartNodeType, NODE_TYPE_CONFIG } from "./types";
 
 export interface FlowchartPaletteItem {

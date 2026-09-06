@@ -2,7 +2,7 @@
 name = "pseudocode-runtime"
 version = "0.1.0"
 edition = "2021"
-description = "Rust WASM runtime for PseudoEditor pseudocode AST execution."
+description = "Rust WASM runtime for Pseudo Build pseudocode AST execution."
 license = "MIT"
 
 [lib]

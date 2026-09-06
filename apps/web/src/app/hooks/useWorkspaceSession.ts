@@ -31,7 +31,7 @@ import {
   updateDocumentSource,
   updateVirtualFiles,
   workspaceHasFolder,
-} from "@igcse/workspace";
+} from "@pseudobuild/workspace";
 import type { Diagnostic } from "@/compiler/types";
 import { loadWorkspace, saveWorkspace } from "@/lib/storage";
 import type { WorkspacePersistenceMode } from "@/lib/platform";

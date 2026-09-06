@@ -7,5 +7,5 @@ if [[ -e "convex/workspaceSyncSecret.ts" ]]; then
 fi
 
 pnpm exec convex deploy \
-  --cmd "pnpm --filter @pseudoeditor/web build" \
+  --cmd "pnpm --filter @pseudobuild/web build" \
   --cmd-url-env-var-name NEXT_PUBLIC_CONVEX_URL

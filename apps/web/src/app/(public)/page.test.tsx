@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createContext, useState } from "react";
-import { createDefaultWorkspace, createDocument, createEmptyWorkspace, createFolder, getChildNodes, setActiveDocument, type WorkspaceState } from "@igcse/workspace";
+import { createDefaultWorkspace, createDocument, createEmptyWorkspace, createFolder, getChildNodes, setActiveDocument, type WorkspaceState } from "@pseudobuild/workspace";
 import type { WorkspacePersistenceMode } from "@/lib/platform";
 
 const { loadWorkspaceMock, saveWorkspaceMock, compilePseudocodeMock, runMock, authState } = vi.hoisted(() => ({
@@ -357,7 +357,7 @@ describe("HomePage workspace flow", () => {
     loadWorkspaceMock.mockResolvedValue(createEmptyWorkspace("2026-03-15T00:00:00.000Z"));
     render(<HomePage />);
 
-    expect(await screen.findByText("Welcome to Pseudocode Compiler")).toBeInTheDocument();
+    expect(await screen.findByText("Welcome to Pseudo Build")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Create New File" }));
     const dialog = await screen.findByRole("dialog", { name: "Create New File" });
@@ -791,7 +791,7 @@ describe("HomePage workspace flow", () => {
     loadWorkspaceMock.mockResolvedValue(createEmptyWorkspace("2026-03-15T00:00:00.000Z"));
     render(<HomePage />);
 
-    expect(await screen.findByText("Welcome to Pseudocode Compiler")).toBeInTheDocument();
+    expect(await screen.findByText("Welcome to Pseudo Build")).toBeInTheDocument();
 
     const event = new Event("beforeunload", { cancelable: true });
     Object.defineProperty(event, "returnValue", {

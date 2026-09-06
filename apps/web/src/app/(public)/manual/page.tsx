@@ -2,12 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, BookOpen, CheckCircle2, Code2, FileText, GitBranch, Play } from "lucide-react";
 import { PublicHeader } from "@/app/components/PublicHeader";
-import { siteUrl } from "@/lib/seo-content";
+import { productName, siteUrl } from "@/lib/seo-content";
 
 export const metadata: Metadata = {
-  title: "Pseudocode Manual",
+  title: "Manual",
   description:
-    "Use the PseudoEditor pseudocode manual for syntax rules, control flow, arrays, trace tables, and exam-style practice.",
+    "The Pseudo Build pseudocode manual: syntax rules, control flow, arrays, trace tables, and exam-style practice.",
   alternates: {
     canonical: "/manual",
   },
@@ -77,48 +77,53 @@ const checklist = [
 const structuredData = {
   "@context": "https://schema.org",
   "@type": "TechArticle",
-  headline: "PseudoEditor Pseudocode Manual",
+  headline: `${productName} Pseudocode Manual`,
   description: metadata.description,
   url: `${siteUrl}/manual`,
 };
 
 export default function ManualPage() {
   return (
-    <main className="min-h-screen bg-[#f7f8f3] text-[#151716]">
+    <main>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
       <PublicHeader active="manual" />
 
-      <section className="mx-auto max-w-6xl px-5 py-14">
-        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#0b6e4f]">Manual</p>
-        <h1 className="mt-3 text-4xl font-black md:text-6xl">Pseudocode manual for practical writing.</h1>
-        <p className="mt-5 max-w-2xl text-lg leading-8 text-[#4b5650]">
-          A managed reference for the syntax, control flow, and tracing habits used across PseudoEditor. Keep it open beside the browser editor while you practise.
+      <section className="site-wrap py-14 md:py-20">
+        <p className="site-eyebrow">manual</p>
+        <h1 className="site-h1 mt-4">The working reference.</h1>
+        <p className="site-lede mt-5 max-w-2xl">
+          Syntax, control flow, and tracing habits in one place. Keep it open beside the editor while you build.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
-          <Link href="/app" className="inline-flex items-center gap-2 rounded-md bg-[#151716] px-4 py-3 text-sm font-bold text-white">
+          <Link href="/app" className="site-btn site-btn-accent">
             Open editor <Play size={16} />
           </Link>
-          <Link href="/docs" className="inline-flex items-center gap-2 rounded-md border border-[#c7d0c0] px-4 py-3 text-sm font-bold text-[#151716]">
+          <Link href="/docs" className="site-btn site-btn-ghost">
             Browse docs <ArrowRight size={16} />
           </Link>
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-6xl gap-4 px-5 pb-16 md:grid-cols-2">
-        {manualSections.map((section) => {
+      <section className="site-wrap grid gap-4 pb-16 md:grid-cols-2">
+        {manualSections.map((section, index) => {
           const Icon = section.icon;
           return (
-            <article key={section.title} className="rounded-lg border border-[#d7ddd0] bg-white p-6 transition hover:border-[#0b6e4f]">
-              <Icon className="mb-5 text-[#1f4e79]" size={24} />
-              <h2 className="text-2xl font-black">{section.title}</h2>
-              <p className="mt-3 text-sm leading-6 text-[#4b5650]">{section.body}</p>
+            <article key={section.title} className="site-card site-card-hover p-6">
+              <div className="flex items-center justify-between">
+                <span className="inline-flex rounded-md border-[1.5px] border-[var(--ink)] bg-[var(--paper)] p-2">
+                  <Icon size={20} />
+                </span>
+                <span className="font-mono text-xs text-[var(--ink-3)]">{String(index + 1).padStart(2, "0")}</span>
+              </div>
+              <h2 className="mt-5 text-2xl font-extrabold tracking-tight">{section.title}</h2>
+              <p className="mt-3 text-sm leading-6 text-[var(--ink-2)]">{section.body}</p>
               <ul className="mt-5 space-y-2">
                 {section.bullets.map((bullet) => (
-                  <li key={bullet} className="flex items-start gap-2 text-sm font-bold text-[#4b5650]">
-                    <CheckCircle2 className="mt-0.5 shrink-0 text-[#0b6e4f]" size={16} />
+                  <li key={bullet} className="flex items-start gap-2 text-sm font-semibold text-[var(--ink-2)]">
+                    <CheckCircle2 className="mt-0.5 shrink-0 text-[var(--accent)]" size={16} />
                     <span>{bullet}</span>
                   </li>
                 ))}
@@ -128,36 +133,34 @@ export default function ManualPage() {
         })}
       </section>
 
-      <section className="border-y border-[#d7ddd0] bg-white px-5 py-16">
-        <div className="mx-auto max-w-6xl">
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#b3412e]">Examples</p>
-          <h2 className="mt-3 text-3xl font-black md:text-5xl">Small patterns you can run.</h2>
-          <div className="mt-8 grid gap-4 md:grid-cols-2">
+      <section className="border-y-[1.5px] border-[var(--line)] bg-white">
+        <div className="site-wrap py-16">
+          <p className="site-eyebrow">examples</p>
+          <h2 className="site-h2 mt-3">Small patterns you can run.</h2>
+          <div className="mt-8 grid gap-6 md:grid-cols-2">
             {examples.map((example) => (
-              <article key={example.title} className="rounded-lg border border-[#d7ddd0] bg-[#f7f8f3] p-5">
-                <h3 className="text-xl font-black">{example.title}</h3>
-                <pre className="mt-5 overflow-x-auto rounded-md bg-[#151716] p-4 font-mono text-sm leading-6 text-[#dce8d1]">
-                  {example.code}
-                </pre>
+              <article key={example.title}>
+                <h3 className="text-lg font-extrabold tracking-tight">{example.title}</h3>
+                <pre className="site-code mt-4">{example.code}</pre>
               </article>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-6xl gap-8 px-5 py-16 lg:grid-cols-[0.85fr_1.15fr]">
+      <section className="site-wrap grid gap-8 py-16 lg:grid-cols-[0.85fr_1.15fr]">
         <div>
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-[#0b6e4f]">Before you submit</p>
-          <h2 className="mt-3 text-3xl font-black md:text-5xl">A compact checking routine.</h2>
-          <p className="mt-5 leading-7 text-[#4b5650]">
+          <p className="site-eyebrow">before you submit</p>
+          <h2 className="site-h2 mt-3">A compact checking routine.</h2>
+          <p className="site-lede mt-5">
             Treat the manual as a working checklist, not a long rules page. Write the algorithm, run it, then trace the parts that change state.
           </p>
         </div>
-        <div className="rounded-lg border border-[#d7ddd0] bg-white p-6">
+        <div className="site-card p-6">
           <ul className="space-y-4">
             {checklist.map((item) => (
-              <li key={item} className="flex items-start gap-3 text-sm font-bold leading-6 text-[#4b5650]">
-                <CheckCircle2 className="mt-0.5 shrink-0 text-[#0b6e4f]" size={18} />
+              <li key={item} className="flex items-start gap-3 text-sm font-semibold leading-6 text-[var(--ink-2)]">
+                <CheckCircle2 className="mt-0.5 shrink-0 text-[var(--accent)]" size={18} />
                 <span>{item}</span>
               </li>
             ))}

@@ -4,7 +4,7 @@ import {
   DEFAULT_WORKSPACE_PERSISTENCE_LIMITS,
   getUtf8ByteLength,
   validateWorkspaceForPersistence,
-} from "@igcse/workspace";
+} from "@pseudobuild/workspace";
 import { api } from "../../../../../../convex/_generated/api";
 import { getWorkspaceRequestAuth } from "./workspaceAuth";
 import { buildWorkspaceSyncUser } from "./workspaceUser";

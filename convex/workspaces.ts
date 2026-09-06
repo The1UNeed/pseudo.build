@@ -26,12 +26,16 @@ function getUtf8ByteLength(value: string) {
   return bytes;
 }
 
-async function requireAuthenticatedClerkUser(ctx: QueryCtx | MutationCtx) {
+async function requireAuthenticatedIdentity(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity?.subject) {
     throw new Error("Unauthorized workspace sync request.");
   }
-  return identity.subject;
+  return identity;
+}
+
+async function requireAuthenticatedClerkUser(ctx: QueryCtx | MutationCtx) {
+  return (await requireAuthenticatedIdentity(ctx)).subject;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -270,8 +274,16 @@ export const saveCurrent = mutation({
     workspaceJson: v.string(),
   },
   handler: async (ctx, args) => {
-    const clerkUserId = await requireAuthenticatedClerkUser(ctx);
+    const identity = await requireAuthenticatedIdentity(ctx);
+    const clerkUserId = identity.subject;
     parseWorkspaceJson(args.workspaceJson);
+
+    // Prefer identity claims from the verified token over caller-supplied profile fields.
+    const user = {
+      email: typeof identity.email === "string" && identity.email ? identity.email : args.user.email,
+      firstName: typeof identity.givenName === "string" ? identity.givenName : args.user.firstName,
+      lastName: typeof identity.familyName === "string" ? identity.familyName : args.user.lastName,
+    };
 
     const now = Date.now();
     const existingUser = await ctx.db
@@ -281,14 +293,12 @@ export const saveCurrent = mutation({
 
     if (existingUser) {
       await ctx.db.patch(existingUser._id, {
-        email: args.user.email,
-        firstName: args.user.firstName,
-        lastName: args.user.lastName,
+        ...user,
         updatedAt: now,
       });
     } else {
       await ctx.db.insert("users", {
-        ...args.user,
+        ...user,
         clerkUserId,
         updatedAt: now,
       });
