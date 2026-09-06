@@ -28,7 +28,7 @@ WebAssembly. Signing in is optional and only enables cloud workspace sync.
 | `packages/workspace` | Workspace model, validation, and persistence helpers (`@pseudobuild/workspace`) |
 | `packages/pseudocode-runtime` | Rust runtime compiled to WebAssembly |
 | `convex` | Convex schema, workspace sync functions, and Clerk webhook |
-| `scripts` | Build and migration scripts |
+| `scripts` | Build scripts |
 
 ## Getting started
 
