@@ -33,21 +33,13 @@ export const metadata: Metadata = {
     siteName: productName,
     title: homeSeoTitle,
     description: homeSeoDescription,
-    images: [{ url: "/icon.png?v=3", width: 512, height: 512, alt: "Pseudo Build app icon" }],
+    images: [{ url: "/icon.png?v=4", width: 512, height: 512, alt: "Pseudo Build app icon" }],
   },
   twitter: {
     card: "summary",
     title: homeSeoTitle,
     description: homeSeoDescription,
-    images: ["/icon.png?v=3"],
-  },
-  icons: {
-    icon: [
-      { url: "/favicon.ico?v=3" },
-      { url: "/icon.png?v=3", type: "image/png" },
-    ],
-    shortcut: [{ url: "/favicon.ico?v=3" }],
-    apple: [{ url: "/icon.png?v=3" }],
+    images: ["/icon.png?v=4"],
   },
 };
 
