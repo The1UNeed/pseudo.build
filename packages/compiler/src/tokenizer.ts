@@ -1,3 +1,4 @@
+import { DEFAULT_SYNTAX_ID, resolveSyntax, type SyntaxDefinition } from "./syntax";
 import { Diagnostic, SourceSpan } from "./types";
 
 export type TokenType =
@@ -16,12 +17,15 @@ export type TokenType =
   | "RPAREN"
   | "LBRACKET"
   | "RBRACKET"
+  | "DOT"
+  | "AMPERSAND"
   | "PLUS"
   | "MINUS"
   | "STAR"
   | "SLASH"
   | "CARET"
   | "EQ"
+  | "EQEQ"
   | "LT"
   | "LTE"
   | "GT"
@@ -35,62 +39,6 @@ export interface Token {
   span: SourceSpan;
 }
 
-const KEYWORDS = new Set([
-  "DECLARE",
-  "CONSTANT",
-  "ARRAY",
-  "OF",
-  "INTEGER",
-  "REAL",
-  "CHAR",
-  "STRING",
-  "BOOLEAN",
-  "INPUT",
-  "OUTPUT",
-  "IF",
-  "THEN",
-  "ELSE",
-  "ENDIF",
-  "CASE",
-  "OTHERWISE",
-  "ENDCASE",
-  "FOR",
-  "TO",
-  "STEP",
-  "NEXT",
-  "REPEAT",
-  "UNTIL",
-  "WHILE",
-  "DO",
-  "ENDWHILE",
-  "PROCEDURE",
-  "ENDPROCEDURE",
-  "FUNCTION",
-  "RETURNS",
-  "ENDFUNCTION",
-  "CALL",
-  "RETURN",
-  "OPENFILE",
-  "READFILE",
-  "WRITEFILE",
-  "CLOSEFILE",
-  "READ",
-  "WRITE",
-  "TRUE",
-  "FALSE",
-  "AND",
-  "OR",
-  "NOT",
-  "DIV",
-  "MOD",
-  "LENGTH",
-  "LCASE",
-  "UCASE",
-  "SUBSTRING",
-  "ROUND",
-  "RANDOM",
-]);
-
 function buildSpan(
   startLine: number,
   startColumn: number,
@@ -100,7 +48,21 @@ function buildSpan(
   return { startLine, startColumn, endLine, endColumn };
 }
 
-export function tokenize(source: string): { tokens: Token[]; diagnostics: Diagnostic[] } {
+function keywordCaseError(syntax: SyntaxDefinition, lexeme: string, canonical: string): string | null {
+  if (syntax.keywordCase === "upper" && lexeme !== canonical) {
+    return `Keyword "${canonical}" must be uppercase in ${syntax.shortLabel} syntax.`;
+  }
+  if (syntax.keywordCase === "lower" && lexeme !== canonical.toLowerCase()) {
+    return `Keyword "${canonical.toLowerCase()}" must be lowercase in ${syntax.shortLabel} syntax.`;
+  }
+  return null;
+}
+
+export function tokenize(
+  source: string,
+  syntaxInput: SyntaxDefinition | string = DEFAULT_SYNTAX_ID,
+): { tokens: Token[]; diagnostics: Diagnostic[] } {
+  const syntax = typeof syntaxInput === "string" ? resolveSyntax(syntaxInput) : syntaxInput;
   const diagnostics: Diagnostic[] = [];
   const tokens: Token[] = [];
 
@@ -140,6 +102,9 @@ export function tokenize(source: string): { tokens: Token[]; diagnostics: Diagno
     });
   };
 
+  const identifierContinue = (char: string) =>
+    syntax.identifierUnderscore ? /[A-Za-z0-9_]/.test(char) : /[A-Za-z0-9]/.test(char);
+
   while (index < source.length) {
     const char = current();
 
@@ -156,7 +121,14 @@ export function tokenize(source: string): { tokens: Token[]; diagnostics: Diagno
       continue;
     }
 
-    if (char === "/" && peek() === "/") {
+    if (char === "/" && peek() === "/" && syntax.comments.includes("//")) {
+      while (current() !== "\n" && current() !== "\0") {
+        advance();
+      }
+      continue;
+    }
+
+    if (char === "#" && syntax.comments.includes("#")) {
       while (current() !== "\n" && current() !== "\0") {
         advance();
       }
@@ -190,6 +162,33 @@ export function tokenize(source: string): { tokens: Token[]; diagnostics: Diagno
       addToken("NEQ", "<>", startLine, startColumn, line, column - 1);
       continue;
     }
+    if (char === "!" && peek() === "=") {
+      advance();
+      advance();
+      addToken("NEQ", "!=", startLine, startColumn, line, column - 1);
+      continue;
+    }
+    if (char === "=" && peek() === "=") {
+      advance();
+      advance();
+      addToken("EQEQ", "==", startLine, startColumn, line, column - 1);
+      continue;
+    }
+    if (char === "≠") {
+      advance();
+      addToken("NEQ", "≠", startLine, startColumn, line, column - 1);
+      continue;
+    }
+    if (char === "≤") {
+      advance();
+      addToken("LTE", "≤", startLine, startColumn, line, column - 1);
+      continue;
+    }
+    if (char === "≥") {
+      advance();
+      addToken("GTE", "≥", startLine, startColumn, line, column - 1);
+      continue;
+    }
 
     const singleCharTokens: Record<string, TokenType> = {
       ":": "COLON",
@@ -198,6 +197,8 @@ export function tokenize(source: string): { tokens: Token[]; diagnostics: Diagno
       ")": "RPAREN",
       "[": "LBRACKET",
       "]": "RBRACKET",
+      ".": "DOT",
+      "&": "AMPERSAND",
       "+": "PLUS",
       "-": "MINUS",
       "*": "STAR",
@@ -278,23 +279,24 @@ export function tokenize(source: string): { tokens: Token[]; diagnostics: Diagno
       continue;
     }
 
-    if (/[A-Za-z]/.test(char)) {
-      let lexeme = "";
-      while (/[A-Za-z0-9]/.test(current())) {
+    if (/[A-Za-z_]/.test(char)) {
+      let lexeme = advance();
+      while (identifierContinue(current())) {
         lexeme += advance();
       }
       const upper = lexeme.toUpperCase();
-      if (KEYWORDS.has(upper)) {
-        if (lexeme !== upper) {
+      if (syntax.keywords.has(upper)) {
+        const caseError = keywordCaseError(syntax, lexeme, upper);
+        if (caseError) {
           diagnostics.push({
             code: "SYN001",
-            message: `Keyword \"${upper}\" must be uppercase in strict mode.`,
+            message: caseError,
             severity: "error",
             line: startLine,
             column: startColumn,
             endLine: line,
             endColumn: column - 1,
-            hint: `Use \"${upper}\" exactly.`,
+            hint: `Use "${syntax.keywordCase === "lower" ? upper.toLowerCase() : upper}" exactly.`,
           });
         }
         addToken("KEYWORD", lexeme, startLine, startColumn, line, column - 1, upper);
@@ -306,13 +308,13 @@ export function tokenize(source: string): { tokens: Token[]; diagnostics: Diagno
 
     diagnostics.push({
       code: "SYN002",
-      message: `Unexpected character \"${char}\".`,
+      message: `Unexpected character "${char}".`,
       severity: "error",
       line,
       column,
       endLine: line,
       endColumn: column,
-      hint: "Remove the character or replace it with valid IGCSE pseudocode syntax.",
+      hint: `Remove the character or replace it with valid ${syntax.shortLabel} pseudocode syntax.`,
     });
     advance();
   }

@@ -16,6 +16,7 @@ import {
   ROOT_FOLDER_ID,
   ROOT_FOLDER_NAME,
   setActiveDocument,
+  setWorkspaceSyntax,
   updateDocumentSource,
   validateWorkspaceForPersistence,
   validateWorkspaceState,
@@ -28,6 +29,13 @@ describe("workspace helpers", () => {
     const state = createDefaultWorkspace({ sampleSource: SAMPLE_SOURCE });
 
     expect(state.nodes[state.rootFolderId].name).toBe(ROOT_FOLDER_NAME);
+    expect(state.syntaxId).toBe("cambridge-igcse");
+  });
+
+  it("persists a selected exam syntax", () => {
+    let state = createDefaultWorkspace({ sampleSource: SAMPLE_SOURCE });
+    state = setWorkspaceSyntax(state, "ib-dp");
+    expect(state.syntaxId).toBe("ib-dp");
   });
 
   it("creates folders and documents with unique sibling names", () => {

@@ -1,5 +1,6 @@
 import {
   ArrayAccessNode,
+  BasicTypeName,
   Diagnostic,
   ExpressionNode,
   FunctionSignature,
@@ -11,6 +12,7 @@ import {
   StaticType,
   TypeNode,
 } from "./types";
+import { DEFAULT_SYNTAX_ID, resolveSyntax, type SyntaxDefinition } from "./syntax";
 
 interface SymbolEntry {
   name: string;
@@ -51,16 +53,7 @@ const INTEGER: StaticType = { kind: "basic", name: "INTEGER" };
 const REAL: StaticType = { kind: "basic", name: "REAL" };
 const STRING: StaticType = { kind: "basic", name: "STRING" };
 
-const BUILTIN_FUNCTIONS: Record<string, FunctionSignature> = {
-  DIV: { name: "DIV", params: [INTEGER, INTEGER], returnType: INTEGER },
-  MOD: { name: "MOD", params: [INTEGER, INTEGER], returnType: INTEGER },
-  LENGTH: { name: "LENGTH", params: [STRING], returnType: INTEGER },
-  LCASE: { name: "LCASE", params: [STRING], returnType: STRING },
-  UCASE: { name: "UCASE", params: [STRING], returnType: STRING },
-  SUBSTRING: { name: "SUBSTRING", params: [STRING, INTEGER, INTEGER], returnType: STRING },
-  ROUND: { name: "ROUND", params: [REAL, INTEGER], returnType: REAL },
-  RANDOM: { name: "RANDOM", params: [], returnType: REAL },
-};
+const DEFAULT_ARRAY_BOUNDS = [{ lower: 0, upper: 1023 }];
 
 function toStaticType(typeNode: TypeNode): StaticType {
   if (typeNode.kind === "basic") {
@@ -89,6 +82,10 @@ function isNumeric(type: StaticType): boolean {
 
 function isBoolean(type: StaticType): boolean {
   return type.kind === "basic" && type.name === "BOOLEAN";
+}
+
+function isStringy(type: StaticType): boolean {
+  return type.kind === "basic" && (type.name === "STRING" || type.name === "CHAR");
 }
 
 function typesCompatible(target: StaticType, value: StaticType): boolean {
@@ -120,14 +117,20 @@ function typesCompatible(target: StaticType, value: StaticType): boolean {
 class Analyzer {
   diagnostics: Diagnostic[] = [];
   symbolTypes: Record<string, StaticType> = {};
-  functionSignatures: Record<string, FunctionSignature> = { ...BUILTIN_FUNCTIONS };
+  functionSignatures: Record<string, FunctionSignature>;
   procedureSignatures: Record<string, ProcedureSignature> = {};
+  private syntax: SyntaxDefinition;
+
+  constructor(syntax: SyntaxDefinition) {
+    this.syntax = syntax;
+    this.functionSignatures = { ...syntax.builtins };
+  }
 
   analyze(program: ProgramNode): SemanticResult {
     const globalScope = new Scope(null);
 
     this.predeclareRoutines(program.body, globalScope);
-    this.analyzeStatements(program.body, globalScope, null, {});
+    this.analyzeStatements(program.body, globalScope, null, {} as Record<string, "READ" | "WRITE" | "APPEND">);
 
     return {
       diagnostics: this.diagnostics,
@@ -188,7 +191,7 @@ class Analyzer {
     statements: StatementNode[],
     scope: Scope,
     currentFunctionReturnType: StaticType | null,
-    openFiles: Record<string, "READ" | "WRITE">,
+    openFiles: Record<string, "READ" | "WRITE" | "APPEND">,
   ): boolean {
     let sawReturn = false;
 
@@ -213,8 +216,8 @@ class Analyzer {
         }
 
         case "assignment": {
-          const targetType = this.resolveAssignableType(statement.target, scope);
           const valueType = this.inferExpressionType(statement.value, scope);
+          const targetType = this.resolveAssignableType(statement.target, scope, valueType);
           if (!typesCompatible(targetType, valueType)) {
             this.pushError(
               statement.span,
@@ -226,7 +229,7 @@ class Analyzer {
         }
 
         case "input": {
-          this.resolveAssignableType(statement.target, scope);
+          this.resolveAssignableType(statement.target, scope, STRING);
           break;
         }
 
@@ -259,7 +262,11 @@ class Analyzer {
         }
 
         case "for": {
-          const iteratorSymbol = scope.lookup(statement.iterator.name);
+          let iteratorSymbol = scope.lookup(statement.iterator.name);
+          if (!iteratorSymbol && !this.syntax.requireDeclarations) {
+            scope.define({ name: statement.iterator.name, kind: "variable", type: INTEGER });
+            iteratorSymbol = scope.lookup(statement.iterator.name);
+          }
           if (!iteratorSymbol) {
             this.pushError(
               statement.iterator.span,
@@ -374,7 +381,7 @@ class Analyzer {
 
         case "writefile": {
           const fileName = this.literalFileName(statement.fileIdentifier, scope);
-          if (fileName && openFiles[fileName] && openFiles[fileName] !== "WRITE") {
+          if (fileName && openFiles[fileName] && openFiles[fileName] !== "WRITE" && openFiles[fileName] !== "APPEND") {
             this.pushError(statement.span, "SEM016", `WRITEFILE used on read-only handle \"${fileName}\".`);
           }
           this.inferExpressionType(statement.fileIdentifier, scope);
@@ -434,6 +441,9 @@ class Analyzer {
         }
         const symbol = scope.lookup(expression.name);
         if (!symbol) {
+          if (!this.syntax.requireDeclarations) {
+            return UNKNOWN;
+          }
           this.pushError(expression.span, "SEM019", `Undeclared identifier \"${expression.name}\".`);
           return UNKNOWN;
         }
@@ -462,10 +472,17 @@ class Analyzer {
         const rightType = this.inferExpressionType(expression.right, scope);
         const op = expression.operator;
 
-        if (["+", "-", "*", "/", "^"].includes(op)) {
+        if (op === "+" && (isStringy(leftType) || isStringy(rightType))) {
+          return STRING;
+        }
+
+        if (["+", "-", "*", "/", "^", "DIV", "MOD"].includes(op)) {
           if (!isNumeric(leftType) || !isNumeric(rightType)) {
             this.pushError(expression.span, "SEM022", `Operator ${op} requires numeric operands.`);
             return UNKNOWN;
+          }
+          if (op === "DIV" || op === "MOD") {
+            return INTEGER;
           }
           if (
             leftType.kind === "basic" &&
@@ -477,7 +494,7 @@ class Analyzer {
           return INTEGER;
         }
 
-        if (["=", "<", "<=", ">", ">=", "<>"] .includes(op)) {
+        if (["=", "<", "<=", ">", ">=", "<>"].includes(op)) {
           return BOOLEAN;
         }
 
@@ -492,7 +509,7 @@ class Analyzer {
       }
 
       case "call": {
-        const builtin = BUILTIN_FUNCTIONS[expression.name.toUpperCase()];
+        const builtin = this.syntax.builtins[expression.name.toUpperCase()];
         if (builtin) {
           this.validateCallArgsWithScope(expression.args, builtin.params, expression.span, expression.name, scope);
           return builtin.returnType;
@@ -537,10 +554,16 @@ class Analyzer {
     });
   }
 
-  private resolveAssignableType(target: ExpressionNode, scope: Scope): StaticType {
+  private resolveAssignableType(target: ExpressionNode, scope: Scope, inferred?: StaticType): StaticType {
     if (target.kind === "identifier") {
       const symbol = scope.lookup(target.name);
       if (!symbol) {
+        if (!this.syntax.requireDeclarations) {
+          const type = inferred && inferred.kind !== "unknown" ? inferred : UNKNOWN;
+          scope.define({ name: target.name, kind: "variable", type });
+          this.symbolTypes[target.name.toLowerCase()] = type;
+          return type;
+        }
         this.pushError(target.span, "SEM019", `Undeclared identifier \"${target.name}\".`);
         return UNKNOWN;
       }
@@ -551,17 +574,29 @@ class Analyzer {
     }
 
     if (target.kind === "arrayAccess") {
-      return this.resolveArrayAccessType(target, scope);
+      return this.resolveArrayAccessType(target, scope, inferred);
     }
 
     return UNKNOWN;
   }
 
-  private resolveArrayAccessType(target: ArrayAccessNode, scope: Scope | null): StaticType {
+  private resolveArrayAccessType(target: ArrayAccessNode, scope: Scope | null, inferred?: StaticType): StaticType {
     if (!scope) {
       return UNKNOWN;
     }
-    const symbol = scope.lookup(target.name);
+    let symbol = scope.lookup(target.name);
+    if (!symbol && !this.syntax.requireDeclarations) {
+      const elementType: BasicTypeName =
+        inferred && inferred.kind === "basic" ? inferred.name : "INTEGER";
+      const arrayType: StaticType = {
+        kind: "array",
+        elementType,
+        dimensions: target.indices.map(() => DEFAULT_ARRAY_BOUNDS[0]),
+      };
+      scope.define({ name: target.name, kind: "variable", type: arrayType });
+      this.symbolTypes[target.name.toLowerCase()] = arrayType;
+      symbol = scope.lookup(target.name);
+    }
     if (!symbol) {
       this.pushError(target.span, "SEM019", `Undeclared identifier \"${target.name}\".`);
       return UNKNOWN;
@@ -612,7 +647,10 @@ class Analyzer {
   }
 }
 
-export function analyzeProgram(ast: ProgramNode): SemanticResult {
-  const analyzer = new Analyzer();
+export function analyzeProgram(
+  ast: ProgramNode,
+  syntaxInput: SyntaxDefinition | string = DEFAULT_SYNTAX_ID,
+): SemanticResult {
+  const analyzer = new Analyzer(typeof syntaxInput === "string" ? resolveSyntax(syntaxInput) : syntaxInput);
   return analyzer.analyze(ast);
 }

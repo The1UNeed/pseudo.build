@@ -115,6 +115,7 @@ interface FlowchartEditorProps {
   initialNodes?: Node[];
   initialEdges?: Edge[];
   source?: string;
+  syntaxId?: string;
   onCodeChange?: (code: string) => void;
   onGenerateCode?: (code: string) => void;
   onSave?: (nodes: Node[], edges: Edge[]) => void;
@@ -124,6 +125,7 @@ function FlowchartEditorInner({
   initialNodes = [],
   initialEdges = [],
   source,
+  syntaxId,
   onCodeChange,
   onGenerateCode,
   onSave,
@@ -170,7 +172,7 @@ function FlowchartEditorInner({
 
     let imported: ReturnType<typeof buildFlowchartFromPseudocode>;
     try {
-      imported = buildFlowchartFromPseudocode(source);
+      imported = buildFlowchartFromPseudocode(source, syntaxId);
     } catch (error) {
       console.warn("Flowchart import failed.", error);
       return;
@@ -183,7 +185,7 @@ function FlowchartEditorInner({
     lastPublishedCodeRef.current = importedCode;
     setNodes(imported.nodes);
     setEdges(imported.edges);
-  }, [setEdges, setNodes, source]);
+  }, [setEdges, setNodes, source, syntaxId]);
 
   useEffect(() => {
     const code = generatePseudocodeFromFlowchart(nodes, edges);

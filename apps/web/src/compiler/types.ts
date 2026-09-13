@@ -1,4 +1,7 @@
 export type {
+  SyntaxId,
+} from "@pseudobuild/compiler";
+export type {
   Severity,
   Diagnostic,
   CompileRequest,

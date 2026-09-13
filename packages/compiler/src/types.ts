@@ -15,6 +15,7 @@ export interface CompileRequest {
   source: string;
   filename: string;
   strict: true;
+  syntaxId?: string;
 }
 
 export interface CompileResult {
@@ -225,7 +226,7 @@ export interface ReturnStatementNode {
   span: SourceSpan;
 }
 
-export type FileMode = "READ" | "WRITE";
+export type FileMode = "READ" | "WRITE" | "APPEND";
 
 export interface OpenFileStatementNode {
   kind: "openfile";
