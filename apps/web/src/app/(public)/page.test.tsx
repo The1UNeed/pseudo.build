@@ -463,6 +463,24 @@ describe("HomePage workspace flow", () => {
     ).toBeInTheDocument();
   });
 
+  it("lets the user pick an exam syntax from settings", async () => {
+    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+    render(<HomePage />);
+    await screen.findByRole("textbox", { name: "Mock editor" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    const syntaxSelect = within(dialog).getByLabelText("Exam syntax");
+    expect(syntaxSelect).toHaveValue("cambridge-igcse");
+
+    fireEvent.change(syntaxSelect, { target: { value: "ib-dp" } });
+
+    await waitFor(() => {
+      const savedState = saveWorkspaceMock.mock.lastCall?.[0] as WorkspaceState;
+      expect(savedState.syntaxId).toBe("ib-dp");
+    });
+  });
+
   it("reorders documents through workspace controls", async () => {
     loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
     render(<HomePage />);
@@ -628,6 +646,7 @@ describe("HomePage workspace flow", () => {
       source: 'OUTPUT "Helper"',
       filename: "Helper.pseudo",
       strict: true,
+      syntaxId: "cambridge-igcse",
     });
 
     expect(await screen.findByLabelText("Terminal input")).toBeInTheDocument();

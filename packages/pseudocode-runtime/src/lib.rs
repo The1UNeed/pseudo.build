@@ -340,13 +340,18 @@ impl Runtime {
             "openfile" => {
                 let name = self.eval(required(statement, "fileIdentifier")?)?.display();
                 let mode = str_field(statement, "mode");
-                if mode == "WRITE" {
+                let pointer = if mode == "WRITE" {
                     self.virtual_files.insert(name.clone(), Vec::new());
+                    0
+                } else if mode == "APPEND" {
+                    let len = self.virtual_files.entry(name.clone()).or_default().len();
+                    len
                 } else {
                     self.virtual_files.entry(name.clone()).or_default();
-                }
+                    0
+                };
                 self.open_files
-                    .insert(name, FileHandle { mode, pointer: 0 });
+                    .insert(name, FileHandle { mode, pointer });
                 Ok(Flow::Continue)
             }
             "readfile" => {
@@ -446,6 +451,9 @@ impl Runtime {
         }
         let right = self.eval(required(expression, "right")?)?;
         Ok(match op.as_str() {
+            "+" if is_text(&left) || is_text(&right) => {
+                Value::String(format!("{}{}", left.display(), right.display()))
+            }
             "+" => numeric_result(&left, &right, left.to_f64() + right.to_f64(), false),
             "-" => numeric_result(&left, &right, left.to_f64() - right.to_f64(), false),
             "*" => numeric_result(&left, &right, left.to_f64() * right.to_f64(), false),
@@ -454,6 +462,20 @@ impl Runtime {
                     return Err(RuntimeError::at(expression, "Division by zero"));
                 }
                 Value::Real(left.to_f64() / right.to_f64())
+            }
+            "DIV" => {
+                let divisor = right.to_i64();
+                if divisor == 0 {
+                    return Err(RuntimeError::at(expression, "Division by zero"));
+                }
+                Value::Integer(left.to_i64().div_euclid(divisor))
+            }
+            "MOD" => {
+                let divisor = right.to_i64();
+                if divisor == 0 {
+                    return Err(RuntimeError::at(expression, "Modulo by zero"));
+                }
+                Value::Integer(left.to_i64().rem_euclid(divisor))
             }
             "^" => numeric_result(&left, &right, left.to_f64().powf(right.to_f64()), true),
             "=" => Value::Boolean(values_equal(&left, &right)),
@@ -490,10 +512,16 @@ impl Runtime {
                 }
                 return Ok(Value::Integer(left.rem_euclid(right)));
             }
-            "LENGTH" => {
-                return Ok(Value::Integer(
-                    self.eval(&args[0])?.display().chars().count() as i64,
-                ))
+            "LENGTH" | "LEN" => {
+                let value = self.eval(&args[0])?;
+                return Ok(Value::Integer(match value {
+                    Value::Array(array) => array
+                        .bounds
+                        .iter()
+                        .map(|(lower, upper)| (upper - lower + 1).max(0))
+                        .product(),
+                    other => other.display().chars().count() as i64,
+                }));
             }
             "LCASE" => return Ok(Value::String(self.eval(&args[0])?.display().to_lowercase())),
             "UCASE" => return Ok(Value::String(self.eval(&args[0])?.display().to_uppercase())),
@@ -504,6 +532,58 @@ impl Runtime {
                 return Ok(Value::String(
                     text.chars().skip(start).take(length).collect(),
                 ));
+            }
+            "LEFT" => {
+                let text = self.eval(&args[0])?.display();
+                let length = self.eval(&args[1])?.to_i64().max(0) as usize;
+                return Ok(Value::String(text.chars().take(length).collect()));
+            }
+            "RIGHT" => {
+                let text = self.eval(&args[0])?.display();
+                let length = self.eval(&args[1])?.to_i64().max(0) as usize;
+                let count = text.chars().count();
+                let skip = count.saturating_sub(length);
+                return Ok(Value::String(text.chars().skip(skip).collect()));
+            }
+            "MID" => {
+                let text = self.eval(&args[0])?.display();
+                let start = self.eval(&args[1])?.to_i64().max(1) as usize - 1;
+                let length = self.eval(&args[2])?.to_i64().max(0) as usize;
+                return Ok(Value::String(
+                    text.chars().skip(start).take(length).collect(),
+                ));
+            }
+            "INT" => return Ok(Value::Integer(self.eval(&args[0])?.to_i64())),
+            "STR" => return Ok(Value::String(self.eval(&args[0])?.display())),
+            "FLOAT" => return Ok(Value::Real(self.eval(&args[0])?.to_f64())),
+            "ASC" => {
+                let text = self.eval(&args[0])?.display();
+                return Ok(Value::Integer(text.chars().next().map(|ch| ch as i64).unwrap_or(0)));
+            }
+            "CHR" => {
+                let code = self.eval(&args[0])?.to_i64() as u32;
+                return Ok(Value::String(
+                    char::from_u32(code).map(String::from).unwrap_or_default(),
+                ));
+            }
+            "POSITION" => {
+                let haystack = self.eval(&args[0])?.display();
+                let needle = self.eval(&args[1])?.display();
+                let position = haystack.find(&needle).map(|index| index as i64 + 1).unwrap_or(0);
+                return Ok(Value::Integer(position));
+            }
+            "RAND" => {
+                let max = self.eval(&args[0])?.to_i64().max(0);
+                self.rng_state = self
+                    .rng_state
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1);
+                let value = if max == 0 {
+                    0
+                } else {
+                    (self.rng_state >> 11) as i64 % (max + 1)
+                };
+                return Ok(Value::Integer(value));
             }
             "ROUND" => {
                 let value = self.eval(&args[0])?.to_f64();
@@ -656,10 +736,23 @@ impl Runtime {
                     .map_err(|message| RuntimeError::at(target, message));
             }
         }
-        Err(RuntimeError::at(
-            target,
-            format!("\"{name}\" is not an array"),
-        ))
+        let bounds = indices
+            .iter()
+            .map(|&index| {
+                let lower = if index < 0 { index } else { 0 };
+                (lower, index.max(1023))
+            })
+            .collect::<Vec<_>>();
+        let mut array = PseudoArray {
+            bounds,
+            default: Box::new(default_value(&value.type_name())),
+            store: HashMap::new(),
+        };
+        array
+            .set(indices, value)
+            .map_err(|message| RuntimeError::at(target, message))?;
+        self.assign_name(&name, Value::Array(array));
+        Ok(())
     }
 
     fn indices(&mut self, target: &JsonValue) -> RuntimeResult<Vec<i64>> {
@@ -717,7 +810,7 @@ impl Runtime {
             .open_files
             .get(name)
             .ok_or_else(|| RuntimeError::at(source, format!("File {name} is not open")))?;
-        if handle.mode != "WRITE" {
+        if handle.mode != "WRITE" && handle.mode != "APPEND" {
             return Err(RuntimeError::at(
                 source,
                 format!("File {name} not opened in WRITE mode"),
@@ -866,6 +959,10 @@ impl RuntimeError {
                 .unwrap_or(1) as usize,
         )
     }
+}
+
+fn is_text(value: &Value) -> bool {
+    matches!(value, Value::String(_))
 }
 
 fn default_value(type_name: &str) -> Value {

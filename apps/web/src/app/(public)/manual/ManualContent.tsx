@@ -407,8 +407,8 @@ export default function ManualContent({ onClose, isModal = false }: ManualConten
               <div className="p-3.5">
                 <p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--accent)]">Editor support</p>
                 <p className="mt-1.5 text-sm leading-relaxed text-[var(--text2)]">
-                  The editor autocomplete includes DIV, MOD, LENGTH, LCASE, UCASE, SUBSTRING, ROUND, and RANDOM,
-                  so the exam-style routine syntax is available while you type.
+                  Settings has an Exam syntax control for Cambridge IGCSE, Cambridge A Level, IB, OCR, and AQA.
+                  Completions follow the board you pick, including DIV, MOD, LENGTH, and the extra routines that board uses.
                 </p>
               </div>
             </div>

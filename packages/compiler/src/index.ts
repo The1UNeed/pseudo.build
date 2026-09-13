@@ -1,8 +1,20 @@
 import { analyzeProgram } from "./semantics";
 import { parseSource } from "./parser";
+import { resolveSyntax } from "./syntax";
 import { CompileRequest, CompileResult } from "./types";
 
 export { parseSource } from "./parser";
+export {
+  DEFAULT_SYNTAX_ID,
+  SYNTAX_CATALOG,
+  SYNTAX_OPTIONS,
+  displayKeyword,
+  isSyntaxId,
+  resolveSyntax,
+  type KeywordCase,
+  type SyntaxDefinition,
+  type SyntaxId,
+} from "./syntax";
 
 export const MAX_SOURCE_BYTES = 256 * 1024;
 
@@ -26,10 +38,11 @@ export function compilePseudocode(request: CompileRequest): CompileResult {
     };
   }
 
-  const { ast, diagnostics: parseDiagnostics } = parseSource(request.source);
+  const syntax = resolveSyntax(request.syntaxId);
+  const { ast, diagnostics: parseDiagnostics } = parseSource(request.source, syntax);
   let semanticResult: ReturnType<typeof analyzeProgram>;
   try {
-    semanticResult = analyzeProgram(ast);
+    semanticResult = analyzeProgram(ast, syntax);
   } catch (error) {
     if (!(error instanceof RangeError)) {
       throw error;

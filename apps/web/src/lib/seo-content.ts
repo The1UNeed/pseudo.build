@@ -96,7 +96,7 @@ OUTPUT "Hello ", Name`,
         heading: "Core statements",
         body: [
           "Use DECLARE for variables, <- for assignment, INPUT for user input, and OUTPUT for displayed values.",
-          "Keywords are intentionally close to Cambridge-style pseudocode conventions so programs stay readable for exam practice.",
+          "Pick Cambridge IGCSE, Cambridge A Level, IB, OCR, or AQA in Settings so the compiler follows that board's notation.",
         ],
         example: `DECLARE Total : INTEGER
 Total <- 0
@@ -396,7 +396,7 @@ export const faqItems = [
   {
     question: "Is this only for IGCSE Computer Science?",
     answer:
-      "The syntax and manual are designed around IGCSE-style pseudocode practice, but the editor is useful for anyone learning structured algorithms.",
+      "No. Settings lets you switch between Cambridge IGCSE, Cambridge AS and A Level, IB Diploma Programme, OCR GCSE, and AQA GCSE notation. The compiler, highlighter, and completions follow the syntax you pick.",
   },
   {
     question: "Is Pseudo Build really free and open source?",

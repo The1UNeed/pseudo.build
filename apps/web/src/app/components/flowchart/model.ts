@@ -893,8 +893,8 @@ function layoutItems(
   };
 }
 
-function buildAstFlowchart(source: string): FlowchartGraphSnapshot | null {
-  const { ast, diagnostics } = parseSource(source);
+function buildAstFlowchart(source: string, syntaxId?: string): FlowchartGraphSnapshot | null {
+  const { ast, diagnostics } = parseSource(source, syntaxId);
   if (diagnostics.some((diagnostic) => diagnostic.severity === "error")) {
     return null;
   }
@@ -1315,13 +1315,13 @@ function buildFallbackFlowchart(source: string): FlowchartGraphSnapshot {
   };
 }
 
-export function buildFlowchartFromPseudocode(source: string): FlowchartGraphSnapshot {
+export function buildFlowchartFromPseudocode(source: string, syntaxId?: string): FlowchartGraphSnapshot {
   const normalized = source.replace(/\r\n/g, "\n");
   if (normalizeSourceForSync(normalized).length === 0) {
     return { nodes: [], edges: [] };
   }
 
-  return buildAstFlowchart(normalized) ?? buildFallbackFlowchart(normalized);
+  return buildAstFlowchart(normalized, syntaxId) ?? buildFallbackFlowchart(normalized);
 }
 
 export function getProcessStatements(data: FlowchartNodeData): string[] {

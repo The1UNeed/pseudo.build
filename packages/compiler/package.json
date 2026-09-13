@@ -11,6 +11,7 @@
     "./tokenizer": "./src/tokenizer.ts",
     "./parser": "./src/parser.ts",
     "./semantics": "./src/semantics.ts",
+    "./syntax": "./src/syntax.ts",
     "./codegen": "./src/codegen.ts"
   },
   "scripts": {
