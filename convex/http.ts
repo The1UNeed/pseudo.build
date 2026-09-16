@@ -3,11 +3,6 @@ import { Webhook } from "svix";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 
-type ClerkWebhookEvent = {
-  type: string;
-  data: { id?: string; deleted?: boolean };
-};
-
 const http = httpRouter();
 
 // Clerk -> Convex webhook. Configure in the Clerk dashboard with the endpoint
@@ -29,15 +24,18 @@ http.route({
       "svix-signature": request.headers.get("svix-signature") ?? "",
     };
 
-    let event: ClerkWebhookEvent;
+    let event: unknown;
     try {
-      event = new Webhook(secret).verify(payload, headers) as unknown as ClerkWebhookEvent;
+      // svix 2.x verify() throws on a bad signature but returns nothing, so parse the verified payload here.
+      new Webhook(secret).verify(payload, headers);
+      event = JSON.parse(payload);
     } catch {
       return new Response("Invalid webhook signature.", { status: 400 });
     }
 
-    if (event.type === "user.deleted" && typeof event.data.id === "string") {
-      await ctx.runMutation(internal.users.deleteByClerkUserId, { clerkUserId: event.data.id });
+    const { type, data } = (event ?? {}) as { type?: unknown; data?: { id?: unknown } | null };
+    if (type === "user.deleted" && typeof data?.id === "string") {
+      await ctx.runMutation(internal.users.deleteByClerkUserId, { clerkUserId: data.id });
     }
 
     return new Response(null, { status: 200 });

@@ -5,6 +5,7 @@ import {
   closeEditorTab,
   closePanel,
   createDocument,
+  createEmptyWorkspace,
   createFolder,
   createPanel,
   deleteNodes,
@@ -13,6 +14,8 @@ import {
   focusPanel,
   getActiveDocument,
   getNodePath,
+  importDocuments,
+  migratePersistedWorkspace,
   moveEditorTab,
   moveNodes,
   openDocumentInFocusedEditor,
@@ -30,10 +33,21 @@ import {
   type WorkspaceState,
   updateDocumentSource,
   updateVirtualFiles,
+  validateWorkspaceForPersistence,
   workspaceHasFolder,
 } from "@pseudobuild/workspace";
 import type { Diagnostic } from "@/compiler/types";
-import { loadWorkspace, saveWorkspace } from "@/lib/storage";
+import { useDictionary } from "@/i18n/context";
+import type { editorEn } from "@/i18n/messages/editor.en";
+import {
+  fetchCloudWorkspace,
+  loadWorkspace,
+  mergeConflict,
+  saveWorkspaceToCloud,
+  writeLocalWorkspace,
+  type LoadedWorkspace,
+  type WorkspaceLoadIssue,
+} from "@/lib/storage";
 import type { WorkspacePersistenceMode } from "@/lib/platform";
 import { pseudocodeRuntimeRunner } from "@/runtime/executeRuntime";
 import {
@@ -46,6 +60,74 @@ const INPUT_REQUEST_ERROR_TEXT = "INPUT requested but no stdin lines remain";
 const MAX_INTERACTIVE_INPUTS = 200;
 const TERMINAL_PROMPT = ">";
 const DEFAULT_AUTO_SAVE_DELAY_MS = 5 * 60 * 1000;
+// Typing reaches IndexedDB shortly after it stops. The (long) autosave delay only applies to cloud uploads.
+const LOCAL_WRITE_DELAY_MS = 500;
+const IMMEDIATE_CLOUD_SAVE_DELAY_MS = 1000;
+const WORKSPACE_CHANNEL_NAME = "pseudo-build-workspace";
+
+type SyncMessages = typeof editorEn.sync;
+
+/** Mutable sync state for one load of the workspace. A new session starts whenever the persistence mode changes. */
+interface SyncSession {
+  mode: WorkspacePersistenceMode;
+  getAuthToken?: () => Promise<string | null>;
+  loaded: boolean;
+  closed: boolean;
+  cacheKey: string | null;
+  revision: number;
+  /** Changes the cloud hasn't confirmed yet (cloud mode only). */
+  cloudDirty: boolean;
+  /** Changes not yet written to IndexedDB. */
+  localPending: boolean;
+  localFailed: boolean;
+  lastError: string | null;
+  localTimer: number | null;
+  cloudTimer: number | null;
+  cloudDeadline: number;
+  localWrites: Promise<void>;
+  cloudSave: Promise<void> | null;
+  cloudQueued: boolean;
+  /** The workspace when the session closed, so pending writes can still be flushed. */
+  finalWorkspace: WorkspaceState | null;
+}
+
+function createSyncSession(mode: WorkspacePersistenceMode, getAuthToken?: () => Promise<string | null>): SyncSession {
+  return {
+    mode,
+    getAuthToken,
+    loaded: false,
+    closed: false,
+    cacheKey: null,
+    revision: 0,
+    cloudDirty: false,
+    localPending: false,
+    localFailed: false,
+    lastError: null,
+    localTimer: null,
+    cloudTimer: null,
+    cloudDeadline: 0,
+    localWrites: Promise.resolve(),
+    cloudSave: null,
+    cloudQueued: false,
+    finalWorkspace: null,
+  };
+}
+
+function getLoadIssueNotice(issue: WorkspaceLoadIssue, messages: SyncMessages): AppNotice {
+  if (issue === "conflict") {
+    return { tone: "info", message: messages.conflict };
+  }
+  return { tone: "error", message: issue === "cloud_unavailable" ? messages.cloudLoadFailed : messages.storageUnavailable };
+}
+
+function notifyOtherTabs(tabId: string, cacheKey: string | null) {
+  if (cacheKey === null || typeof BroadcastChannel === "undefined") {
+    return;
+  }
+  const channel = new BroadcastChannel(WORKSPACE_CHANNEL_NAME);
+  channel.postMessage({ tabId, cacheKey });
+  channel.close();
+}
 
 export interface AppNotice {
   tone: "error" | "info";
@@ -65,8 +147,6 @@ interface PendingTerminalInput {
   prompt: string | null;
   text: string;
 }
-
-type SaveRequestSource = "autosave" | "manual";
 
 function isInputRequestRuntimeError(stderr: string): boolean {
   return stderr.includes(INPUT_REQUEST_ERROR_TEXT);
@@ -115,11 +195,14 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
   const [isSaving, setIsSaving] = useState(false);
   const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [appNotice, setAppNotice] = useState<AppNotice | null>(null);
+  const [tabId] = useState(() => Math.random().toString(36).slice(2));
+  const syncMessages = useDictionary().editor.sync;
 
   const workspaceRef = useRef<WorkspaceState | null>(null);
-  const saveTimerRef = useRef<number | null>(null);
-  const saveRequestIdRef = useRef(0);
-  const loadedRef = useRef(false);
+  const sessionRef = useRef<SyncSession | null>(null);
+  const flushPromiseRef = useRef<Promise<void>>(Promise.resolve());
+  const syncMessagesRef = useRef(syncMessages);
+  const defaultSourceRef = useRef(defaultSource);
   const getCloudAuthTokenRef = useRef(options.getCloudAuthToken);
   const pendingInputResolverRef = useRef<((value: string | null) => void) | null>(null);
 
@@ -127,21 +210,243 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
     getCloudAuthTokenRef.current = options.getCloudAuthToken;
   }, [options.getCloudAuthToken]);
 
+  useEffect(() => {
+    syncMessagesRef.current = syncMessages;
+    defaultSourceRef.current = defaultSource;
+  }, [defaultSource, syncMessages]);
+
   const getCurrentCloudAuthToken = useCallback(async () => {
     return await (getCloudAuthTokenRef.current?.() ?? null);
   }, []);
+
+  const isActiveSession = useCallback((session: SyncSession) => {
+    return sessionRef.current === session && !session.closed;
+  }, []);
+
+  const getSessionWorkspace = useCallback(
+    (session: SyncSession) => (isActiveSession(session) ? workspaceRef.current : session.finalWorkspace),
+    [isActiveSession],
+  );
+
+  const setSessionWorkspace = useCallback(
+    (session: SyncSession, nextWorkspace: WorkspaceState) => {
+      if (isActiveSession(session)) {
+        workspaceRef.current = nextWorkspace;
+        setWorkspace(nextWorkspace);
+      } else {
+        session.finalWorkspace = nextWorkspace;
+      }
+    },
+    [isActiveSession],
+  );
+
+  const reportSyncError = useCallback(
+    (session: SyncSession, message: string) => {
+      session.lastError = message;
+      if (isActiveSession(session)) {
+        setSaveError(message);
+      }
+    },
+    [isActiveSession],
+  );
+
+  /** Writes the latest workspace to IndexedDB. Writes are chained so an older record never lands last. */
+  const flushLocal = useCallback(
+    (session: SyncSession) => {
+      if (session.localTimer !== null) {
+        window.clearTimeout(session.localTimer);
+        session.localTimer = null;
+      }
+      const workspaceToWrite = getSessionWorkspace(session);
+      if (!session.loaded || !session.localPending || !workspaceToWrite || session.mode === "memory") {
+        return session.localWrites;
+      }
+      const { cacheKey } = session;
+      if (cacheKey === null) {
+        if (session.mode === "local") {
+          reportSyncError(session, syncMessagesRef.current.storageUnavailable);
+        }
+        return session.localWrites;
+      }
+
+      session.localPending = false;
+      const record = {
+        workspace: workspaceToWrite,
+        dirty: session.mode === "cloud" && session.cloudDirty,
+        revision: session.revision,
+      };
+      session.localWrites = session.localWrites.then(async () => {
+        try {
+          await writeLocalWorkspace(cacheKey, record);
+          session.localFailed = false;
+          if (session.mode === "local" && !session.localPending && isActiveSession(session)) {
+            session.lastError = null;
+            setSaveError(null);
+            setHasPendingSave(false);
+            setLastSavedAt(Date.now());
+          }
+        } catch {
+          session.localFailed = true;
+          if (session.mode === "local") {
+            reportSyncError(session, syncMessagesRef.current.localSaveFailed);
+          }
+        }
+      });
+      return session.localWrites;
+    },
+    [getSessionWorkspace, isActiveSession, reportSyncError],
+  );
+
+  /** Uploads the latest workspace. One request runs at a time, and calls made meanwhile coalesce into one follow-up. */
+  const uploadToCloud = useCallback(
+    (session: SyncSession, keepalive = false): Promise<void> => {
+      if (session.cloudTimer !== null) {
+        window.clearTimeout(session.cloudTimer);
+        session.cloudTimer = null;
+      }
+      if (session.mode !== "cloud" || !session.loaded) {
+        return Promise.resolve();
+      }
+      if (session.cloudSave) {
+        session.cloudQueued = true;
+        return session.cloudSave;
+      }
+
+      const messages = syncMessagesRef.current;
+      const run = async () => {
+        let conflicts = 0;
+        while (session.cloudDirty) {
+          session.cloudQueued = false;
+          const uploaded = getSessionWorkspace(session);
+          if (!uploaded) {
+            return;
+          }
+          const validation = validateWorkspaceForPersistence(uploaded);
+          if (!validation.ok) {
+            reportSyncError(session, messages.tooLarge(validation.message));
+            return;
+          }
+
+          if (isActiveSession(session)) {
+            setIsSaving(true);
+          }
+          const result = await saveWorkspaceToCloud(uploaded, session.revision, {
+            getAuthToken: session.getAuthToken,
+            keepalive,
+          });
+
+          if (result.ok) {
+            session.revision = result.revision;
+            session.cloudDirty = getSessionWorkspace(session) !== uploaded;
+            session.localPending = true;
+            session.lastError = null;
+            await flushLocal(session);
+            notifyOtherTabs(tabId, session.cacheKey);
+            if (isActiveSession(session)) {
+              setSaveError(null);
+              setHasPendingSave(session.cloudDirty);
+              setLastSavedAt(Date.now());
+            }
+            if (!session.cloudQueued) {
+              return;
+            }
+            continue;
+          }
+
+          // Someone else saved first: keep this version, copy in the other version's changed files, and retry.
+          if (result.code === "revision_conflict" && conflicts < 2) {
+            conflicts += 1;
+            const cloud = await fetchCloudWorkspace(session.getAuthToken);
+            const local = getSessionWorkspace(session);
+            if (cloud.ok && local) {
+              session.revision = cloud.revision;
+              if (cloud.workspace) {
+                const server = migratePersistedWorkspace(cloud.workspace, { sampleSource: defaultSourceRef.current });
+                const merged = mergeConflict(local, server, messages.conflictFolder);
+                if (merged !== local) {
+                  setSessionWorkspace(session, merged);
+                  if (isActiveSession(session)) {
+                    setAppNotice({ tone: "info", message: messages.conflict });
+                  }
+                }
+              }
+              session.localPending = true;
+              await flushLocal(session);
+              continue;
+            }
+          }
+
+          reportSyncError(
+            session,
+            session.cacheKey !== null && !session.localFailed ? messages.saveFailedKept : messages.saveFailed,
+          );
+          return;
+        }
+      };
+
+      session.cloudSave = run().finally(() => {
+        session.cloudSave = null;
+        if (isActiveSession(session)) {
+          setIsSaving(false);
+        }
+      });
+      return session.cloudSave;
+    },
+    [flushLocal, getSessionWorkspace, isActiveSession, reportSyncError, setSessionWorkspace, tabId],
+  );
+
+  const scheduleLocalWrite = useCallback(
+    (session: SyncSession, delay: number) => {
+      if (session.localTimer !== null) {
+        window.clearTimeout(session.localTimer);
+      }
+      session.localTimer = window.setTimeout(() => void flushLocal(session), delay);
+    },
+    [flushLocal],
+  );
+
+  /** Schedules an upload, keeping an earlier deadline so continuous typing can't postpone it forever. */
+  const scheduleCloudUpload = useCallback(
+    (session: SyncSession, delay: number) => {
+      const deadline = Date.now() + delay;
+      if (session.cloudTimer !== null) {
+        if (session.cloudDeadline <= deadline) {
+          return;
+        }
+        window.clearTimeout(session.cloudTimer);
+      }
+      session.cloudDeadline = deadline;
+      session.cloudTimer = window.setTimeout(() => {
+        session.cloudTimer = null;
+        void uploadToCloud(session);
+      }, delay);
+    },
+    [uploadToCloud],
+  );
 
   useEffect(() => {
     if (cloudSyncLoading) {
       return;
     }
 
-    let cancelled = false;
-    loadedRef.current = false;
+    const previous = sessionRef.current;
+    // Guest work only lives in memory, so carry it into the signed-in workspace instead of dropping it.
+    const guestWorkspace = previous?.mode === "memory" && persistenceMode !== "memory" ? previous.finalWorkspace : null;
+    const session = createSyncSession(
+      persistenceMode,
+      getCloudAuthTokenRef.current ? getCurrentCloudAuthToken : undefined,
+    );
+    sessionRef.current = session;
     workspaceRef.current = null;
+    const messages = syncMessagesRef.current;
+    const loadOptions = {
+      mode: persistenceMode,
+      getAuthToken: session.getAuthToken,
+      conflictFolderName: messages.conflictFolder,
+    };
 
     queueMicrotask(() => {
-      if (cancelled) {
+      if (session.closed) {
         return;
       }
       setWorkspace(null);
@@ -150,117 +455,133 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
       setIsSaving(false);
     });
 
-    void loadWorkspace(defaultSource, {
-      ...(getCloudAuthTokenRef.current ? { getAuthToken: getCurrentCloudAuthToken } : {}),
-      mode: persistenceMode,
-    }).then((loadedWorkspace) => {
-      if (cancelled) {
+    void (async () => {
+      await flushPromiseRef.current;
+      const loaded = await loadWorkspace(defaultSource, loadOptions).catch(
+        (): LoadedWorkspace => ({
+          workspace: createEmptyWorkspace(),
+          cacheKey: null,
+          revision: 0,
+          dirty: false,
+          issue: "storage_unavailable",
+        }),
+      );
+      if (session.closed) {
         return;
       }
-      workspaceRef.current = loadedWorkspace;
-      setWorkspace(loadedWorkspace);
-      setHasPendingSave(false);
+
+      session.loaded = true;
+      session.cacheKey = loaded.cacheKey;
+      session.revision = loaded.revision;
+      session.cloudDirty = persistenceMode === "cloud" && loaded.dirty;
+      let nextWorkspace = loaded.workspace;
+      let notice = loaded.issue ? getLoadIssueNotice(loaded.issue, messages) : null;
+      if (guestWorkspace) {
+        const imported = importDocuments(nextWorkspace, guestWorkspace, messages.guestFolder);
+        if (imported !== nextWorkspace) {
+          nextWorkspace = imported;
+          session.cloudDirty = persistenceMode === "cloud";
+          session.localPending = true;
+          notice ??= { tone: "info", message: messages.guestImported };
+        }
+      }
+
+      workspaceRef.current = nextWorkspace;
+      setWorkspace(nextWorkspace);
+      setHasPendingSave(session.cloudDirty || session.localPending);
       setLastSavedAt(null);
-      loadedRef.current = true;
-    });
+      if (notice) {
+        setAppNotice(notice);
+      }
+      void flushLocal(session);
+      // After a failed load nothing is uploaded until the user changes something.
+      if (loaded.issue !== "cloud_unavailable") {
+        void uploadToCloud(session);
+      }
+    })();
+
+    const flushSession = (keepalive: boolean) =>
+      Promise.all([flushLocal(session), uploadToCloud(session, keepalive)]).then(
+        () => undefined,
+        () => undefined,
+      );
+    const handlePageHide = () => void flushSession(true);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        void flushSession(true);
+      }
+    };
+    window.addEventListener("pagehide", handlePageHide);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    // Another tab saved this workspace. Refresh when this tab has nothing unsaved; otherwise the next save resolves it.
+    const isIdle = () => session.loaded && !session.cloudDirty && !session.localPending && !session.cloudSave;
+    const channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(WORKSPACE_CHANNEL_NAME);
+    if (channel) {
+      channel.onmessage = (event: MessageEvent<{ tabId?: unknown; cacheKey?: unknown } | null>) => {
+        if (event.data?.tabId === tabId || session.cacheKey === null || event.data?.cacheKey !== session.cacheKey || !isIdle()) {
+          return;
+        }
+        void loadWorkspace(defaultSource, loadOptions).then((loaded) => {
+          if (!isActiveSession(session) || !isIdle() || loaded.issue || loaded.dirty) {
+            return;
+          }
+          session.revision = loaded.revision;
+          workspaceRef.current = loaded.workspace;
+          setWorkspace(loaded.workspace);
+        });
+      };
+    }
 
     return () => {
-      cancelled = true;
-      if (saveTimerRef.current !== null) {
-        window.clearTimeout(saveTimerRef.current);
-      }
+      session.closed = true;
+      session.finalWorkspace = workspaceRef.current;
+      window.removeEventListener("pagehide", handlePageHide);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      channel?.close();
+      flushPromiseRef.current = flushSession(false);
       const resolver = pendingInputResolverRef.current;
       if (resolver) {
         pendingInputResolverRef.current = null;
         resolver(null);
       }
     };
-  }, [cloudSyncLoading, defaultSource, getCurrentCloudAuthToken, persistenceMode]);
-
-  const persistWorkspace = useCallback(async (
-    nextWorkspace: WorkspaceState,
-    requestId: number,
-    source: SaveRequestSource,
-  ) => {
-    if (persistenceMode === "memory") {
-      if (saveRequestIdRef.current !== requestId) {
-        return false;
-      }
-      setSaveError(null);
-      setHasPendingSave(true);
-      setLastSavedAt(null);
-      setIsSaving(false);
-      return false;
-    }
-
-    setIsSaving(true);
-    try {
-      await saveWorkspace(nextWorkspace, {
-        ...(getCloudAuthTokenRef.current ? { getAuthToken: getCurrentCloudAuthToken } : {}),
-        mode: persistenceMode,
-      });
-      if (saveRequestIdRef.current !== requestId) {
-        return false;
-      }
-      setSaveError(null);
-      setHasPendingSave(false);
-      setLastSavedAt(Date.now());
-      return true;
-    } catch {
-      if (saveRequestIdRef.current !== requestId) {
-        return false;
-      }
-      setSaveError(
-        source === "manual"
-          ? "Save failed. Changes remain on this device."
-          : "Autosave failed. Changes remain on this device.",
-      );
-      setHasPendingSave(true);
-      return false;
-    } finally {
-      if (saveRequestIdRef.current === requestId) {
-        setIsSaving(false);
-      }
-    }
-  }, [getCurrentCloudAuthToken, persistenceMode]);
+  }, [
+    cloudSyncLoading,
+    defaultSource,
+    flushLocal,
+    getCurrentCloudAuthToken,
+    isActiveSession,
+    persistenceMode,
+    tabId,
+    uploadToCloud,
+  ]);
 
   const commitWorkspace = useCallback(
     (nextWorkspace: WorkspaceState, mode: "immediate" | "debounced") => {
       workspaceRef.current = nextWorkspace;
       setWorkspace(nextWorkspace);
 
-      if (!loadedRef.current) {
+      const session = sessionRef.current;
+      if (!session?.loaded || session.closed) {
         return;
       }
 
-      const requestId = saveRequestIdRef.current + 1;
-      saveRequestIdRef.current = requestId;
       setHasPendingSave(true);
-
-      if (persistenceMode === "memory") {
+      if (session.mode === "memory") {
         setSaveError(null);
         setLastSavedAt(null);
         return;
       }
 
-      if (mode === "immediate") {
-        if (saveTimerRef.current !== null) {
-          window.clearTimeout(saveTimerRef.current);
-          saveTimerRef.current = null;
-        }
-        void persistWorkspace(nextWorkspace, requestId, "autosave");
-        return;
+      session.localPending = true;
+      session.cloudDirty = session.mode === "cloud";
+      scheduleLocalWrite(session, mode === "debounced" ? LOCAL_WRITE_DELAY_MS : 0);
+      if (session.mode === "cloud") {
+        scheduleCloudUpload(session, mode === "debounced" ? autoSaveDelayMs : IMMEDIATE_CLOUD_SAVE_DELAY_MS);
       }
-
-      if (saveTimerRef.current !== null) {
-        window.clearTimeout(saveTimerRef.current);
-      }
-      saveTimerRef.current = window.setTimeout(() => {
-        saveTimerRef.current = null;
-        void persistWorkspace(nextWorkspace, requestId, "autosave");
-      }, autoSaveDelayMs);
     },
-    [autoSaveDelayMs, persistWorkspace, persistenceMode],
+    [autoSaveDelayMs, scheduleCloudUpload, scheduleLocalWrite],
   );
 
   const resolvePendingInput = useCallback((value: string | null) => {
@@ -303,22 +624,25 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
   const dismissNotice = useCallback(() => setAppNotice(null), []);
 
   const saveWorkspaceNow = useCallback(async () => {
-    const current = workspaceRef.current;
-    if (!current) {
+    const session = sessionRef.current;
+    if (!workspaceRef.current || !session?.loaded || session.closed) {
       showAppError("Open or create a workspace before saving.");
       return false;
     }
-
-    if (saveTimerRef.current !== null) {
-      window.clearTimeout(saveTimerRef.current);
-      saveTimerRef.current = null;
+    if (session.mode === "memory") {
+      return false;
     }
 
-    const requestId = saveRequestIdRef.current + 1;
-    saveRequestIdRef.current = requestId;
-    setHasPendingSave(true);
-    return await persistWorkspace(current, requestId, "manual");
-  }, [persistWorkspace, showAppError]);
+    setIsSaving(true);
+    session.lastError = null;
+    session.localPending = true;
+    session.cloudDirty = session.mode === "cloud";
+    await Promise.all([flushLocal(session), uploadToCloud(session)]);
+    if (isActiveSession(session)) {
+      setIsSaving(false);
+    }
+    return session.lastError === null && !session.cloudDirty && (session.mode === "cloud" || !session.localFailed);
+  }, [flushLocal, isActiveSession, showAppError, uploadToCloud]);
 
   const applyWorkspaceUpdate = useCallback(
     (updater: (current: WorkspaceState) => WorkspaceState, mode: "immediate" | "debounced") => {
@@ -530,6 +854,8 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
     updateTerminalOutput(target.panelId, "");
 
     const stdinLines: string[] = [];
+    // One RANDOM seed per Run click, reused by every INPUT replay so earlier values stay stable.
+    const seed = Math.floor(Math.random() * 2 ** 32);
     const transcript: string[] = [];
     let renderedStdout = "";
     let latestVirtualFiles = target.workspace.virtualFiles;
@@ -561,6 +887,7 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
       let runResult = await pseudocodeRuntimeRunner.run({
         astJson,
         stdinLines: [...stdinLines],
+        seed,
         virtualFiles: latestVirtualFiles,
       });
 
@@ -590,6 +917,7 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
         runResult = await pseudocodeRuntimeRunner.run({
           astJson,
           stdinLines: [...stdinLines],
+          seed,
           virtualFiles: latestVirtualFiles,
         });
       }

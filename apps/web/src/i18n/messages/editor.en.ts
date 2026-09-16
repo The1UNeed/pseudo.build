@@ -78,4 +78,16 @@ export const editorEn = {
   breadcrumbs: { documentPath: "Document path" },
   legal: { userAgreement: "User agreement", privacy: "Privacy", security: "Security", github: "GitHub", notice: (year: number) => `© ${year} Pseudo Build. Free and open source under the GNU GPL v3.` },
   touchTabs: { editor: "EDITOR", files: "FILES", output: "OUTPUT", settings: "SETTINGS" },
+  sync: {
+    cloudLoadFailed: "Couldn't reach your cloud workspace. Your cloud copy hasn't been changed. Reload to try again.",
+    storageUnavailable: "This browser is blocking storage, so changes are kept only while this tab stays open.",
+    saveFailedKept: "Couldn't save to the cloud. Your changes are saved on this device and will upload on the next save.",
+    saveFailed: "Couldn't save your changes. Keep this tab open and try again.",
+    localSaveFailed: "Couldn't save to this device. Keep this tab open and try again.",
+    tooLarge: (detail: string) => `Cloud saving is paused because the workspace is over a size limit. ${detail}`,
+    conflict: "This workspace also changed in another tab or on another device. Your version is kept, and files that differ in the other version were copied into the \"Cloud copy\" folder.",
+    conflictFolder: "Cloud copy",
+    guestFolder: "Guest",
+    guestImported: "Files you wrote before signing in were added to the \"Guest\" folder.",
+  },
 };

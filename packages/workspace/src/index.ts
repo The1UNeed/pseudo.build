@@ -155,18 +155,25 @@ export type WorkspacePersistenceValidationResult =
   | {
       ok: false;
       reason: "invalid" | "too_large";
+      /** The limit that was exceeded, when `reason` is "too_large". */
+      limit?: keyof WorkspacePersistenceLimits;
       message: string;
     };
 
+const MAX_PERSISTED_NODES = 500;
+const MAX_PERSISTED_VIRTUAL_FILE_LINES = 5000;
+
+// The generic counters are derived from the domain limits so that a workspace at maxNodes or
+// maxVirtualFileLines still fits: a node has at most ~13 fields and every node can appear in a few id arrays.
 export const DEFAULT_WORKSPACE_PERSISTENCE_LIMITS: WorkspacePersistenceLimits = {
   maxSerializedBytes: 512 * 1024,
   maxDepth: 24,
-  maxObjectEntries: 3000,
-  maxArrayItems: 3000,
+  maxObjectEntries: MAX_PERSISTED_NODES * 16 + 2000,
+  maxArrayItems: MAX_PERSISTED_VIRTUAL_FILE_LINES + MAX_PERSISTED_NODES * 4 + 1000,
   maxStringBytes: 256 * 1024,
-  maxNodes: 500,
+  maxNodes: MAX_PERSISTED_NODES,
   maxVirtualFiles: 100,
-  maxVirtualFileLines: 5000,
+  maxVirtualFileLines: MAX_PERSISTED_VIRTUAL_FILE_LINES,
 };
 
 export interface CreateNodeOptions {
@@ -348,8 +355,9 @@ export function validateWorkspaceState(raw: unknown): WorkspaceState | null {
     if (!isWorkspaceNode(node)) {
       return null;
     }
-    normalizedNodes[id] = node;
+    normalizedNodes[id] = node.id === id ? node : { ...node, id };
   }
+  repairNodeParents(normalizedNodes, candidate.rootFolderId);
 
   const layout = coerceLayoutNode(candidate.layout);
   if (!layout) {
@@ -387,7 +395,7 @@ export function validateWorkspaceForPersistence(
     return {
       ok: false,
       reason: "too_large",
-      message: limitError,
+      ...limitError,
     };
   }
 
@@ -405,6 +413,7 @@ export function validateWorkspaceForPersistence(
     return {
       ok: false,
       reason: "too_large",
+      limit: "maxNodes",
       message: `Workspace payload has too many nodes (${nodeCount}/${limits.maxNodes}).`,
     };
   }
@@ -414,6 +423,7 @@ export function validateWorkspaceForPersistence(
     return {
       ok: false,
       reason: "too_large",
+      limit: "maxVirtualFiles",
       message: `Workspace payload has too many virtual files (${virtualFileNames.length}/${limits.maxVirtualFiles}).`,
     };
   }
@@ -423,6 +433,7 @@ export function validateWorkspaceForPersistence(
     return {
       ok: false,
       reason: "too_large",
+      limit: "maxVirtualFileLines",
       message: `Workspace payload has too many virtual file lines (${virtualFileLineCount}/${limits.maxVirtualFileLines}).`,
     };
   }
@@ -432,6 +443,7 @@ export function validateWorkspaceForPersistence(
     return {
       ok: false,
       reason: "too_large",
+      limit: "maxSerializedBytes",
       message: `Workspace payload exceeds ${limits.maxSerializedBytes} bytes after normalization.`,
     };
   }
@@ -759,15 +771,64 @@ export function listDocuments(state: WorkspaceState): WorkspaceDocumentNode[] {
     .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt));
 }
 
+/** Returns the chain from the root to `nodeId`. Stops at a missing parent or a cycle instead of throwing. */
 export function getNodePath(state: WorkspaceState, nodeId: string): WorkspaceNode[] {
   const path: WorkspaceNode[] = [];
-  let current = getNodeOrThrow(state, nodeId);
-  path.unshift(current);
-  while (current.parentId) {
-    current = getNodeOrThrow(state, current.parentId);
-    path.unshift(current);
+  const seen = new Set<string>();
+  let currentId: string | null = nodeId;
+  while (currentId !== null && !seen.has(currentId)) {
+    const node: WorkspaceNode | undefined = state.nodes[currentId];
+    if (!node) {
+      break;
+    }
+    seen.add(currentId);
+    path.unshift(node);
+    currentId = node.parentId;
   }
   return path;
+}
+
+/**
+ * Copies the non-empty documents of `source` into a new top-level folder of `target`, for example guest work
+ * at sign-in or the other side of a save conflict. Returns `target` unchanged when there is nothing to copy.
+ */
+export function importDocuments(
+  target: WorkspaceState,
+  source: WorkspaceState,
+  folderName: string,
+  options: { skip?: (document: WorkspaceDocumentNode) => boolean; now?: string } = {},
+): WorkspaceState {
+  const documents = listDocuments(source).filter(
+    (document) => document.source.trim().length > 0 && !options.skip?.(document),
+  );
+  if (documents.length === 0) {
+    return target;
+  }
+
+  const now = options.now ?? new Date().toISOString();
+  const next = cloneState(target);
+  const folderId = createNodeId("folder", now);
+  next.nodes[folderId] = {
+    id: folderId,
+    type: "folder",
+    parentId: next.rootFolderId,
+    name: resolveSiblingName(next, next.rootFolderId, folderName),
+    order: getNextOrder(next, next.rootFolderId),
+    createdAt: now,
+    updatedAt: now,
+  };
+  documents.forEach((document, index) => {
+    const id = `${createNodeId("document", now)}-${index}`;
+    next.nodes[id] = {
+      ...document,
+      id,
+      parentId: folderId,
+      name: resolveSiblingName(next, folderId, document.name),
+      order: index,
+    };
+  });
+  next.expandedFolderIds = uniqueIds([...(next.expandedFolderIds ?? []), folderId]);
+  return normalizeWorkspace(next);
 }
 
 export function flattenVisibleNodes(state: WorkspaceState): Array<{ node: WorkspaceNode; depth: number }> {
@@ -2112,12 +2173,38 @@ function normalizeDocumentName(name: string): string {
   if (!name) {
     return NEW_DOCUMENT_BASENAME;
   }
-  return name.endsWith(".pseudo") ? name : `${name}.pseudo`;
+  return /\.pseudo$/i.test(name) ? name : `${name}.pseudo`;
+}
+
+/** Moves nodes with a missing, non-folder or cyclic parent chain to the root, in place. */
+function repairNodeParents(nodes: Record<string, WorkspaceNode>, rootFolderId: string) {
+  for (const [id, node] of Object.entries(nodes)) {
+    const parent = node.parentId === null ? undefined : nodes[node.parentId];
+    if (id !== rootFolderId && (!parent || parent.type !== "folder" || node.parentId === id)) {
+      nodes[id] = { ...node, parentId: rootFolderId };
+    }
+  }
+
+  // Every parent now exists and is a folder, so any chain that never reaches the root is a cycle.
+  const reachesRoot = new Set([rootFolderId]);
+  for (const id of Object.keys(nodes)) {
+    const chain = new Set<string>();
+    let currentId = id;
+    while (!reachesRoot.has(currentId)) {
+      if (chain.has(currentId)) {
+        nodes[currentId] = { ...nodes[currentId], parentId: rootFolderId };
+        break;
+      }
+      chain.add(currentId);
+      currentId = nodes[currentId].parentId ?? rootFolderId;
+    }
+    chain.forEach((chainId) => reachesRoot.add(chainId));
+  }
 }
 
 function collectDescendantIds(state: WorkspaceState, parentId: string, target: Set<string>) {
   for (const child of Object.values(state.nodes)) {
-    if (child.parentId !== parentId) {
+    if (child.parentId !== parentId || target.has(child.id)) {
       continue;
     }
     target.add(child.id);
@@ -2132,7 +2219,8 @@ function countRemainingDocuments(state: WorkspaceState, removedIds: Set<string>)
 }
 
 function collapseNodeIds(state: WorkspaceState, nodeIds: string[]): string[] {
-  const uniqueNodeIds = uniqueIds(nodeIds);
+  // Stale ids (for example from a selection made before another delete) are skipped, not fatal.
+  const uniqueNodeIds = uniqueIds(nodeIds).filter((nodeId) => state.nodes[nodeId]);
   return uniqueNodeIds.filter((nodeId) => {
     const node = getNodeOrThrow(state, nodeId);
     if (node.id === state.rootFolderId) {
@@ -2150,11 +2238,13 @@ function collapseNodeIds(state: WorkspaceState, nodeIds: string[]): string[] {
 }
 
 function isDescendantOf(state: WorkspaceState, nodeId: string, ancestorId: string): boolean {
+  const seen = new Set<string>();
   let current = state.nodes[nodeId];
-  while (current?.parentId) {
+  while (current?.parentId && !seen.has(current.id)) {
     if (current.parentId === ancestorId) {
       return true;
     }
+    seen.add(current.id);
     current = state.nodes[current.parentId];
   }
   return false;
@@ -2243,7 +2333,7 @@ function isWorkspaceNode(raw: unknown): raw is WorkspaceNode {
     return true;
   }
 
-  return typeof candidate.source === "string";
+  return candidate.type === "document" && typeof candidate.source === "string";
 }
 
 export function getUtf8ByteLength(value: string) {
@@ -2264,20 +2354,23 @@ export function getUtf8ByteLength(value: string) {
   return bytes;
 }
 
-function inspectWorkspacePayloadLimits(raw: unknown, limits: WorkspacePersistenceLimits): string | null {
+function inspectWorkspacePayloadLimits(
+  raw: unknown,
+  limits: WorkspacePersistenceLimits,
+): { limit: keyof WorkspacePersistenceLimits; message: string } | null {
   let serialized: string;
   try {
     const nextSerialized = JSON.stringify(raw);
     if (!nextSerialized) {
-      return "Workspace payload must be JSON serializable.";
+      return { limit: "maxSerializedBytes", message: "Workspace payload must be JSON serializable." };
     }
     serialized = nextSerialized;
   } catch {
-    return "Workspace payload must be JSON serializable.";
+    return { limit: "maxSerializedBytes", message: "Workspace payload must be JSON serializable." };
   }
 
   if (getUtf8ByteLength(serialized) > limits.maxSerializedBytes) {
-    return `Workspace payload exceeds ${limits.maxSerializedBytes} bytes.`;
+    return { limit: "maxSerializedBytes", message: `Workspace payload exceeds ${limits.maxSerializedBytes} bytes.` };
   }
 
   const stack: Array<{ value: unknown; depth: number }> = [{ value: raw, depth: 0 }];
@@ -2293,11 +2386,11 @@ function inspectWorkspacePayloadLimits(raw: unknown, limits: WorkspacePersistenc
 
     const { value, depth } = current;
     if (depth > limits.maxDepth) {
-      return `Workspace payload exceeds depth ${limits.maxDepth}.`;
+      return { limit: "maxDepth", message: `Workspace payload exceeds depth ${limits.maxDepth}.` };
     }
 
     if (typeof value === "string" && getUtf8ByteLength(value) > limits.maxStringBytes) {
-      return `Workspace payload contains a string over ${limits.maxStringBytes} bytes.`;
+      return { limit: "maxStringBytes", message: `Workspace payload contains a string over ${limits.maxStringBytes} bytes.` };
     }
 
     if (!value || typeof value !== "object") {
@@ -2312,7 +2405,10 @@ function inspectWorkspacePayloadLimits(raw: unknown, limits: WorkspacePersistenc
     if (Array.isArray(value)) {
       arrayItems += value.length;
       if (arrayItems > limits.maxArrayItems) {
-        return `Workspace payload has too many array items (${arrayItems}/${limits.maxArrayItems}).`;
+        return {
+          limit: "maxArrayItems",
+          message: `Workspace payload has too many array items (${arrayItems}/${limits.maxArrayItems}).`,
+        };
       }
       for (const item of value) {
         stack.push({ value: item, depth: depth + 1 });
@@ -2323,7 +2419,10 @@ function inspectWorkspacePayloadLimits(raw: unknown, limits: WorkspacePersistenc
     const entries = Object.entries(value);
     objectEntries += entries.length;
     if (objectEntries > limits.maxObjectEntries) {
-      return `Workspace payload has too many object fields (${objectEntries}/${limits.maxObjectEntries}).`;
+      return {
+        limit: "maxObjectEntries",
+        message: `Workspace payload has too many object fields (${objectEntries}/${limits.maxObjectEntries}).`,
+      };
     }
 
     for (const [, entryValue] of entries) {

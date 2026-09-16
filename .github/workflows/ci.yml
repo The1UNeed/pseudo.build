@@ -27,6 +27,7 @@ jobs:
       - run: pnpm lint
       # Vitest with coverage thresholds. Cargo tests run in the rust job.
       - run: pnpm test:coverage
+      - run: pnpm test:convex
       - run: pnpm build
 
   rust:

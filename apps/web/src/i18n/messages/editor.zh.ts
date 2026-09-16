@@ -17,4 +17,16 @@ export const editorZh: typeof editorEn = {
   manual: { title: "伪代码手册" }, breadcrumbs: { documentPath: "文档路径" },
   legal: { userAgreement: "用户协议", privacy: "隐私", security: "安全", github: "GitHub", notice: (year) => `© ${year} Pseudo Build。依据 GNU GPL v3 发布的自由开源软件。` },
   touchTabs: { editor: "编辑器", files: "文件", output: "输出", settings: "设置" },
+  sync: {
+    cloudLoadFailed: "无法连接云端工作区。云端副本未被修改。请刷新页面重试。",
+    storageUnavailable: "此浏览器阻止了本地存储，更改只会在此标签页打开期间保留。",
+    saveFailedKept: "无法保存到云端。更改已保存在此设备上，将在下次保存时上传。",
+    saveFailed: "无法保存更改。请保持此标签页打开并重试。",
+    localSaveFailed: "无法保存到此设备。请保持此标签页打开并重试。",
+    tooLarge: (detail) => `工作区超出大小限制，已暂停云端保存。${detail}`,
+    conflict: "此工作区也在其他标签页或设备上被修改。已保留你的版本，另一版本中不同的文件已复制到“云端副本”文件夹。",
+    conflictFolder: "云端副本",
+    guestFolder: "访客",
+    guestImported: "登录前编写的文件已添加到“访客”文件夹。",
+  },
 };

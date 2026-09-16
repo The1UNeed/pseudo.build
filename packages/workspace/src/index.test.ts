@@ -6,8 +6,12 @@ import {
   createFolder,
   deleteNode,
   deleteNodes,
+  DEFAULT_WORKSPACE_PERSISTENCE_LIMITS,
+  flattenVisibleNodes,
   getChildNodes,
   getActiveDocument,
+  getNodePath,
+  importDocuments,
   migratePersistedWorkspace,
   moveNode,
   moveNodes,
@@ -17,11 +21,13 @@ import {
   ROOT_FOLDER_NAME,
   setActiveDocument,
   updateDocumentSource,
+  updateVirtualFiles,
   validateWorkspaceForPersistence,
   validateWorkspaceState,
 } from "./index";
 
 const SAMPLE_SOURCE = `OUTPUT "Hello"`;
+const cloneJson = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 describe("workspace helpers", () => {
   it("uses the explorer root name for the synthetic project root", () => {
@@ -275,6 +281,119 @@ describe("workspace migration", () => {
     expect(result).toMatchObject({
       ok: false,
       reason: "too_large",
+      limit: "maxNodes",
     });
+  });
+
+  it("accepts a workspace at the advertised node and virtual file line limits", () => {
+    const now = "2026-03-15T00:00:00.000Z";
+    let workspace = createEmptyWorkspace(now);
+    for (let index = 0; index < DEFAULT_WORKSPACE_PERSISTENCE_LIMITS.maxNodes - 1; index += 1) {
+      workspace = createDocument(workspace, { id: `doc-${index}`, name: `Doc ${index}`, source: "OUTPUT 1", now });
+    }
+    workspace = updateVirtualFiles(
+      workspace,
+      { "data.txt": Array.from({ length: DEFAULT_WORKSPACE_PERSISTENCE_LIMITS.maxVirtualFileLines }, (_, i) => `r${i}`) },
+      now,
+    );
+
+    expect(Object.keys(workspace.nodes)).toHaveLength(DEFAULT_WORKSPACE_PERSISTENCE_LIMITS.maxNodes);
+    expect(validateWorkspaceForPersistence(workspace).ok).toBe(true);
+
+    const tooManyLines = updateVirtualFiles(
+      workspace,
+      { "data.txt": Array.from({ length: DEFAULT_WORKSPACE_PERSISTENCE_LIMITS.maxVirtualFileLines + 1 }, () => "r") },
+      now,
+    );
+    expect(validateWorkspaceForPersistence(tooManyLines)).toMatchObject({ ok: false, limit: "maxVirtualFileLines" });
+  });
+});
+
+describe("workspace tree repair", () => {
+  const now = "2026-03-15T00:00:00.000Z";
+
+  it("moves nodes with a dangling or non-folder parent to the root", () => {
+    const corrupt = cloneJson(createDefaultWorkspace({ sampleSource: SAMPLE_SOURCE, now }));
+    const withSecond = createDocument(corrupt, { id: "doc-2", name: "two", now });
+    const raw = cloneJson(withSecond);
+    raw.nodes["doc-main"].parentId = "missing-folder";
+    raw.nodes["doc-2"].parentId = "doc-main";
+
+    const repaired = validateWorkspaceState(raw)!;
+
+    expect(repaired.nodes["doc-main"].parentId).toBe(ROOT_FOLDER_ID);
+    expect(repaired.nodes["doc-2"].parentId).toBe(ROOT_FOLDER_ID);
+    expect(getNodePath(repaired, "doc-main").map((node) => node.id)).toEqual([ROOT_FOLDER_ID, "doc-main"]);
+  });
+
+  it("breaks parent cycles so every folder is reachable and getNodePath terminates", () => {
+    let state = createDefaultWorkspace({ sampleSource: SAMPLE_SOURCE, now });
+    state = createFolder(state, { id: "fa", name: "A", now });
+    state = createFolder(state, { id: "fb", name: "B", parentId: "fa", now });
+    const raw = cloneJson(state);
+    raw.nodes["fa"].parentId = "fb";
+
+    expect(getNodePath(raw, "fa").map((node) => node.id)).toEqual(["fb", "fa"]);
+
+    const repaired = validateWorkspaceState(raw)!;
+    const visible = flattenVisibleNodes({ ...repaired, expandedFolderIds: [ROOT_FOLDER_ID, "fa", "fb"] });
+    expect(visible.map((entry) => entry.node.id)).toEqual(expect.arrayContaining(["fa", "fb"]));
+    expect(getNodePath(repaired, "fb")[0].id).toBe(ROOT_FOLDER_ID);
+    expect(getNodePath(repaired, "fa")[0].id).toBe(ROOT_FOLDER_ID);
+  });
+
+  it("repairs id and key mismatches and rejects unknown node types", () => {
+    const raw = cloneJson(createDefaultWorkspace({ sampleSource: SAMPLE_SOURCE, now }));
+    raw.nodes["doc-main"].id = "something-else";
+    expect(validateWorkspaceState(raw)?.nodes["doc-main"].id).toBe("doc-main");
+
+    (raw.nodes["doc-main"] as unknown as { type: string }).type = "file";
+    expect(validateWorkspaceState(raw)).toBeNull();
+  });
+
+  it("returns an empty path for unknown ids", () => {
+    expect(getNodePath(createEmptyWorkspace(now), "missing")).toEqual([]);
+  });
+});
+
+describe("workspace edge cases", () => {
+  const now = "2026-03-15T00:00:00.000Z";
+
+  it("treats the .pseudo extension case-insensitively", () => {
+    let state = createEmptyWorkspace(now);
+    state = createDocument(state, { id: "a", name: "Main.PSEUDO", now });
+    state = createDocument(state, { id: "b", name: "other.pseudo", now });
+    state = renameNode(state, "b", "OTHER.Pseudo", now);
+
+    expect(state.nodes["a"].name).toBe("Main.PSEUDO");
+    expect(state.nodes["b"].name).toBe("OTHER.Pseudo");
+  });
+
+  it("skips stale ids in batch deletes and moves", () => {
+    let state = createDefaultWorkspace({ sampleSource: SAMPLE_SOURCE, now });
+    state = createDocument(state, { id: "keep", name: "k", now });
+    state = createFolder(state, { id: "folder", name: "F", now });
+
+    const moved = moveNodes(state, ["keep", "already-gone"], "folder");
+    expect(moved.nodes["keep"].parentId).toBe("folder");
+
+    const deleted = deleteNodes(moved, ["keep", "already-gone"]);
+    expect(deleted.nodes["keep"]).toBeUndefined();
+  });
+
+  it("imports non-empty documents into a new folder without changing the active document", () => {
+    const target = createDefaultWorkspace({ sampleSource: "cloud", now });
+    let source = createEmptyWorkspace(now);
+    source = createDocument(source, { id: "g1", name: "main", source: "guest work", now });
+    source = createDocument(source, { id: "g2", name: "empty", source: "  ", now });
+
+    const merged = importDocuments(target, source, "Guest", { now });
+    const folder = Object.values(merged.nodes).find((node) => node.type === "folder" && node.name === "Guest")!;
+    const imported = getChildNodes(merged, folder.id);
+
+    expect(imported).toHaveLength(1);
+    expect(imported[0]).toMatchObject({ name: "main.pseudo", source: "guest work" });
+    expect(getActiveDocument(merged)?.source).toBe("cloud");
+    expect(importDocuments(target, createEmptyWorkspace(now), "Guest")).toBe(target);
   });
 });
