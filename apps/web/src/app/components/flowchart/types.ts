@@ -10,10 +10,15 @@ export type FlowchartNodeType =
   | 'inputOutput'     // Input/Output - parallelogram
   | 'subroutine';     // Subroutine - rectangle with side bars
 
+export type TerminatorKind = 'start' | 'end';
+
 export interface FlowchartNodeData extends Record<string, unknown> {
   label: string;
   type: FlowchartNodeType;
   content?: string;
+  // For terminator nodes
+  terminatorKind?: TerminatorKind;
+  commentLine?: string; // original `// Start` / `// End` source line, emitted back verbatim
   // For decision nodes
   trueLabel?: string;
   falseLabel?: string;

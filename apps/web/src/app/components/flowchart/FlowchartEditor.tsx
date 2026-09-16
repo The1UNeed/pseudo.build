@@ -21,6 +21,7 @@ import { nodeTypes } from './FlowchartNodes';
 import {
   buildFlowchartFromPseudocode,
   FLOWCHART_PALETTE_ITEMS,
+  FlowchartPaletteItem,
   createFlowchartNodeData,
   generatePseudocodeFromFlowchart,
   getDecisionEdgeLabel,
@@ -28,26 +29,8 @@ import {
   serializePaletteItem,
 } from './model';
 import { FlowchartNodeData, FlowchartNodeType, NODE_DIMENSIONS, NODE_TYPE_CONFIG } from './types';
-import {
-  ArrowRightLeft,
-  Box,
-  Cpu,
-  Download,
-  GitBranch,
-  Layout,
-  Play,
-  Plus,
-  Trash2,
-} from 'lucide-react';
+import { Download, Layout, Plus, Trash2 } from 'lucide-react';
 import { useDictionary } from '@/i18n/context';
-
-const iconMap = {
-  Play,
-  Cpu,
-  GitBranch,
-  ArrowRightLeft,
-  Box,
-};
 
 // Shape preview components for palette
 function ShapePreview({ type, color }: { type: FlowchartNodeType; color: string }) {
@@ -119,6 +102,8 @@ interface FlowchartEditorProps {
   onCodeChange?: (code: string) => void;
   onGenerateCode?: (code: string) => void;
   onSave?: (nodes: Node[], edges: Edge[]) => void;
+  /** While false, `source` isn't re-imported and no code is generated; the editor catches up when shown. */
+  isVisible?: boolean;
 }
 
 function FlowchartEditorInner({
@@ -128,6 +113,7 @@ function FlowchartEditorInner({
   onCodeChange,
   onGenerateCode,
   onSave,
+  isVisible = true,
 }: FlowchartEditorProps) {
   const t = useDictionary().editor;
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
@@ -135,7 +121,11 @@ function FlowchartEditorInner({
   const [showPalette, setShowPalette] = useState(true);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const hasInitializedCodeSyncRef = useRef(false);
-  const isHydratingFromSourceRef = useRef(false);
+  // Code of a graph imported from `source` that hasn't rendered yet; it must not be published back.
+  const pendingImportCodeRef = useRef<string | null>(null);
+  const lastSyncedSourceRef = useRef<string | null>(null);
+  // Set by Clear Canvas: canvas edits stay local until the user presses Generate Code.
+  const isDetachedRef = useRef(false);
   const lastPublishedCodeRef = useRef<string>('');
   const nodesRef = useRef<Node[]>(initialNodes);
   const edgesRef = useRef<Edge[]>(initialEdges);
@@ -157,9 +147,10 @@ function FlowchartEditorInner({
   }, [edges, nodes, onSave]);
 
   useEffect(() => {
-    if (typeof source !== 'string') {
+    if (typeof source !== 'string' || !isVisible || source === lastSyncedSourceRef.current) {
       return;
     }
+    lastSyncedSourceRef.current = source;
 
     const nextSource = source.replace(/\r\n/g, '\n').trim();
     const currentCode = generatePseudocodeFromFlowchart(nodesRef.current, edgesRef.current)
@@ -178,37 +169,37 @@ function FlowchartEditorInner({
       console.warn("Flowchart import failed.", error);
       return;
     }
-    const importedCode = generatePseudocodeFromFlowchart(imported.nodes, imported.edges)
-      .replace(/\r\n/g, '\n')
-      .trim();
-
-    isHydratingFromSourceRef.current = true;
-    lastPublishedCodeRef.current = importedCode;
+    isDetachedRef.current = false;
+    pendingImportCodeRef.current = generatePseudocodeFromFlowchart(imported.nodes, imported.edges);
     setNodes(imported.nodes);
     setEdges(imported.edges);
-  }, [setEdges, setNodes, source]);
+  }, [isVisible, setEdges, setNodes, source]);
 
   useEffect(() => {
+    if (!isVisible) {
+      return;
+    }
+
     const code = generatePseudocodeFromFlowchart(nodes, edges);
-    if (!hasInitializedCodeSyncRef.current) {
+    const pendingImportCode = pendingImportCodeRef.current;
+    if (pendingImportCode !== null || !hasInitializedCodeSyncRef.current) {
+      // Wait until the imported graph renders, then use it as the published baseline.
+      if (pendingImportCode !== null && code !== pendingImportCode) {
+        return;
+      }
+      pendingImportCodeRef.current = null;
       hasInitializedCodeSyncRef.current = true;
       lastPublishedCodeRef.current = code;
       return;
     }
 
-    if (isHydratingFromSourceRef.current) {
-      isHydratingFromSourceRef.current = false;
-      lastPublishedCodeRef.current = code;
-      return;
-    }
-
-    if (code === lastPublishedCodeRef.current) {
+    if (isDetachedRef.current || code === lastPublishedCodeRef.current) {
       return;
     }
 
     lastPublishedCodeRef.current = code;
     onCodeChange?.(code);
-  }, [edges, nodes, onCodeChange]);
+  }, [edges, isVisible, nodes, onCodeChange]);
 
   const syncDecisionEdges = useCallback(
     (nodeId: string, nextData: FlowchartNodeData) => {
@@ -295,34 +286,51 @@ function FlowchartEditorInner({
     event.dataTransfer.dropEffect = 'move';
   }, []);
 
-  const onDrop = useCallback(
-    (event: React.DragEvent) => {
-      event.preventDefault();
-
-      const payload = parsePalettePayload(event.dataTransfer.getData('application/reactflow'));
-      if (!payload) {
-        return;
-      }
-
-      const position = screenToFlowPosition({
-        x: event.clientX,
-        y: event.clientY,
-      });
-
-      const dimensions = NODE_DIMENSIONS[payload.type];
+  const addNodeAt = useCallback(
+    (
+      type: FlowchartNodeType,
+      defaults: Partial<FlowchartNodeData> | undefined,
+      clientX: number,
+      clientY: number,
+    ) => {
+      const position = screenToFlowPosition({ x: clientX, y: clientY });
+      const dimensions = NODE_DIMENSIONS[type];
       const newNode: Node = {
-        id: `${payload.type}-${Date.now()}`,
-        type: payload.type,
+        id: `${type}-${Date.now()}`,
+        type,
         position: {
           x: position.x - dimensions.width / 2,
           y: position.y - dimensions.height / 2,
         },
-        data: createFlowchartNodeData(payload.type, payload.defaults),
+        data: createFlowchartNodeData(type, defaults),
       };
 
       setNodes((currentNodes) => currentNodes.concat(newNode));
     },
     [screenToFlowPosition, setNodes],
+  );
+
+  const onDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+
+      const payload = parsePalettePayload(event.dataTransfer.getData('application/reactflow'));
+      if (payload) {
+        addNodeAt(payload.type, payload.defaults, event.clientX, event.clientY);
+      }
+    },
+    [addNodeAt],
+  );
+
+  // Click and keyboard path for the palette: add the block at the centre of the visible canvas.
+  const addPaletteItemAtCenter = useCallback(
+    (item: FlowchartPaletteItem) => {
+      const bounds = reactFlowWrapper.current?.getBoundingClientRect();
+      if (bounds) {
+        addNodeAt(item.type, item.defaults, bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+      }
+    },
+    [addNodeAt],
   );
 
   const onDragStart = (event: React.DragEvent, payload: string) => {
@@ -333,6 +341,7 @@ function FlowchartEditorInner({
   const generatePseudocode = useCallback(() => {
     const code = generatePseudocodeFromFlowchart(nodes, edges);
     lastPublishedCodeRef.current = code;
+    isDetachedRef.current = false;
 
     if (onGenerateCode) {
       onGenerateCode(code);
@@ -346,7 +355,9 @@ function FlowchartEditorInner({
     setEdges((currentEdges) => currentEdges.filter((edge) => !edge.selected));
   }, [setEdges, setNodes]);
 
+  // Clears only the canvas. The document keeps its code until the user presses Generate Code.
   const clearCanvas = useCallback(() => {
+    isDetachedRef.current = true;
     setNodes([]);
     setEdges([]);
   }, [setEdges, setNodes]);
@@ -395,6 +406,7 @@ function FlowchartEditorInner({
   return (
     <div className="flex h-full w-full">
       <div
+        inert={!showPalette}
         className={`
           flex flex-col border-r border-[var(--separator)] bg-[var(--sidebar)]
           transition-all duration-300 ease-in-out
@@ -411,14 +423,22 @@ function FlowchartEditorInner({
         <div className="flex-1 overflow-y-auto p-3 space-y-2">
           {FLOWCHART_PALETTE_ITEMS.map((item) => {
             const config = NODE_TYPE_CONFIG[item.type];
-            const Icon = iconMap[config.icon as keyof typeof iconMap];
             const text = paletteText[item.id as keyof typeof paletteText];
 
             return (
               <div
                 key={item.id}
+                role="button"
+                tabIndex={0}
                 draggable
                 onDragStart={(event) => onDragStart(event, serializePaletteItem(item))}
+                onClick={() => addPaletteItemAtCenter(item)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    addPaletteItemAtCenter(item);
+                  }
+                }}
                 className="
                   flex items-center gap-3 rounded-lg border border-[var(--separator)] bg-[var(--surface)] p-3
                   cursor-move transition-all duration-200 group
@@ -467,6 +487,9 @@ function FlowchartEditorInner({
       </div>
 
       <button
+        type="button"
+        aria-label={showPalette ? t.flowchart.hidePalette : t.flowchart.showPalette}
+        aria-expanded={showPalette}
         onClick={() => setShowPalette((current) => !current)}
         className={`
           absolute left-0 top-1/2 z-10 flex h-12 w-6 -translate-y-1/2 items-center justify-center rounded-r-lg
@@ -544,7 +567,7 @@ function FlowchartEditorInner({
                     value={selectedNodeData.label}
                     onChange={(event) => updateSelectedNodeData({ label: event.target.value })}
                     className="w-full rounded-lg border border-[var(--separator)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] outline-none transition focus:border-[var(--accent)]"
-                    placeholder="Start"
+                    placeholder={t.flowchart.palette.start.title}
                   />
                 </label>
               ) : null}
@@ -609,7 +632,7 @@ function FlowchartEditorInner({
                       value={selectedNodeData.label}
                       onChange={(event) => updateSelectedNodeData({ label: event.target.value })}
                       className="w-full rounded-lg border border-[var(--separator)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] outline-none transition focus:border-[var(--accent)]"
-                      placeholder="Process"
+                      placeholder={t.flowchart.process}
                     />
                   </label>
 
