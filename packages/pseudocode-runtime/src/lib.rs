@@ -4,6 +4,14 @@ use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
 const DEFAULT_INSTRUCTION_BUDGET: usize = 1_000_000;
+const DEFAULT_SEED: u64 = 0x9e37_79b9_7f4a_7c15;
+/// Deepest chain of active routine calls.
+const MAX_CALL_DEPTH: usize = 250;
+/// Deepest recursion through statements and expressions, counted across calls.
+/// Keeps the WASM stack from overflowing.
+const MAX_NESTING_DEPTH: usize = 4_000;
+/// Deepest JSON nesting accepted for the AST, checked before parsing.
+const MAX_AST_JSON_DEPTH: usize = 4_000;
 
 #[derive(Debug, Clone, PartialEq)]
 enum Value {
@@ -28,6 +36,7 @@ struct RunInput {
     stdin_lines: Vec<String>,
     virtual_files: HashMap<String, Vec<String>>,
     instruction_budget: Option<usize>,
+    seed: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -88,12 +97,23 @@ struct Runtime {
     functions: HashMap<String, JsonValue>,
     procedures: HashMap<String, JsonValue>,
     remaining_steps: usize,
+    depth: usize,
     rng_state: u64,
 }
 
 impl Runtime {
     fn new(input: RunInput) -> RuntimeResult<Self> {
-        let ast: JsonValue = serde_json::from_str(&input.ast_json)
+        if json_depth_exceeds(&input.ast_json, MAX_AST_JSON_DEPTH) {
+            return Err(RuntimeError::new(
+                format!("Program nesting is too deep (limit {MAX_AST_JSON_DEPTH} levels)"),
+                1,
+                1,
+            ));
+        }
+        let mut deserializer = serde_json::Deserializer::from_str(&input.ast_json);
+        deserializer.disable_recursion_limit();
+        let ast = JsonValue::deserialize(&mut deserializer)
+            .and_then(|ast| deserializer.end().map(|_| ast))
             .map_err(|error| RuntimeError::new(format!("Invalid AST JSON: {error}"), 1, 1))?;
 
         let mut runtime = Self {
@@ -110,7 +130,8 @@ impl Runtime {
             remaining_steps: input
                 .instruction_budget
                 .unwrap_or(DEFAULT_INSTRUCTION_BUDGET),
-            rng_state: 0x9e37_79b9_7f4a_7c15,
+            depth: 0,
+            rng_state: input.seed.unwrap_or(DEFAULT_SEED),
         };
         runtime.collect_routines();
         Ok(runtime)
@@ -205,7 +226,13 @@ impl Runtime {
     }
 
     fn exec_statement(&mut self, statement: &JsonValue) -> RuntimeResult<Flow> {
-        self.step(statement)?;
+        self.enter(statement)?;
+        let flow = self.exec_statement_inner(statement);
+        self.depth -= 1;
+        flow
+    }
+
+    fn exec_statement_inner(&mut self, statement: &JsonValue) -> RuntimeResult<Flow> {
         match str_field(statement, "kind").as_str() {
             "declare" => {
                 let name = nested_str(statement, &["identifier", "name"]);
@@ -226,18 +253,20 @@ impl Runtime {
                     self.declare_type(&name, &str_field(type_node, "name"));
                     default_value(&str_field(type_node, "name"))
                 };
-                self.assign_name(&name, value);
+                self.declare_name(&name, value);
                 Ok(Flow::Continue)
             }
             "constant" => {
                 let name = nested_str(statement, &["identifier", "name"]);
                 let value = self.eval(required(statement, "value")?)?;
                 self.declare_type(&name, &value.type_name());
-                self.assign_name(&name, value);
+                self.declare_name(&name, value);
                 Ok(Flow::Continue)
             }
             "assignment" => {
                 let value = self.eval(required(statement, "value")?)?;
+                let value =
+                    coerce_declared(&self.target_type(statement).unwrap_or_default(), value);
                 self.assign_target(required(statement, "target")?, value)?;
                 Ok(Flow::Continue)
             }
@@ -245,7 +274,8 @@ impl Runtime {
                 let raw = self.read_input(statement)?;
                 let target = required(statement, "target")?;
                 let value = match self.target_type(statement) {
-                    Some(type_name) => coerce_input(&raw, &type_name),
+                    Some(type_name) => coerce_input(&raw, &type_name)
+                        .map_err(|message| RuntimeError::at(statement, message))?,
                     None => Value::String(raw),
                 };
                 self.assign_target(target, value)?;
@@ -281,15 +311,16 @@ impl Runtime {
             }
             "for" => {
                 let iterator = nested_str(statement, &["iterator", "name"]);
-                let end = self.eval(required(statement, "endValue")?)?.to_i64();
+                let end = self.eval_integer(required(statement, "endValue")?, "FOR end value")?;
                 let step = match statement.get("stepValue") {
                     Some(JsonValue::Null) | None => 1,
-                    Some(expr) => self.eval(expr)?.to_i64(),
+                    Some(expr) => self.eval_integer(expr, "FOR STEP")?,
                 };
                 if step == 0 {
                     return Err(RuntimeError::at(statement, "FOR STEP cannot be zero"));
                 }
-                let mut value = self.eval(required(statement, "startValue")?)?.to_i64();
+                let mut value =
+                    self.eval_integer(required(statement, "startValue")?, "FOR start value")?;
                 loop {
                     if (step > 0 && value > end) || (step < 0 && value < end) {
                         break;
@@ -301,7 +332,10 @@ impl Runtime {
                     {
                         return Ok(flow);
                     }
-                    value += step;
+                    match value.checked_add(step) {
+                        Some(next) => value = next,
+                        None => break,
+                    }
                 }
                 Ok(Flow::Continue)
             }
@@ -340,10 +374,19 @@ impl Runtime {
             "openfile" => {
                 let name = self.eval(required(statement, "fileIdentifier")?)?.display();
                 let mode = str_field(statement, "mode");
-                if mode == "WRITE" {
-                    self.virtual_files.insert(name.clone(), Vec::new());
-                } else {
-                    self.virtual_files.entry(name.clone()).or_default();
+                match mode.as_str() {
+                    "WRITE" => {
+                        self.virtual_files.insert(name.clone(), Vec::new());
+                    }
+                    "READ" if !self.virtual_files.contains_key(&name) => {
+                        return Err(RuntimeError::at(
+                            statement,
+                            format!("File {name} does not exist"),
+                        ));
+                    }
+                    _ => {
+                        self.virtual_files.entry(name.clone()).or_default();
+                    }
                 }
                 self.open_files
                     .insert(name, FileHandle { mode, pointer: 0 });
@@ -371,14 +414,22 @@ impl Runtime {
     }
 
     fn eval(&mut self, expression: &JsonValue) -> RuntimeResult<Value> {
-        self.step(expression)?;
+        self.enter(expression)?;
+        let value = self.eval_inner(expression);
+        self.depth -= 1;
+        value
+    }
+
+    fn eval_inner(&mut self, expression: &JsonValue) -> RuntimeResult<Value> {
         match str_field(expression, "kind").as_str() {
             "literal" => Ok(match str_field(expression, "literalType").as_str() {
                 "INTEGER" => Value::Integer(
                     expression
                         .get("value")
                         .and_then(JsonValue::as_i64)
-                        .unwrap_or(0),
+                        .ok_or_else(|| {
+                            RuntimeError::at(expression, "Integer literal is out of range")
+                        })?,
                 ),
                 "REAL" => Value::Real(
                     expression
@@ -417,7 +468,7 @@ impl Runtime {
                 } else {
                     match operand {
                         Value::Real(value) => Ok(Value::Real(-value)),
-                        value => Ok(Value::Integer(-value.to_i64())),
+                        value => integer_result(expression, value.to_i64().checked_neg()),
                     }
                 }
             }
@@ -445,17 +496,26 @@ impl Runtime {
             ));
         }
         let right = self.eval(required(expression, "right")?)?;
+        if let (Value::Integer(a), Value::Integer(b)) = (&left, &right) {
+            match op.as_str() {
+                "+" => return integer_result(expression, a.checked_add(*b)),
+                "-" => return integer_result(expression, a.checked_sub(*b)),
+                "*" => return integer_result(expression, a.checked_mul(*b)),
+                _ => {}
+            }
+        }
+        let (a, b) = (left.to_f64(), right.to_f64());
         Ok(match op.as_str() {
-            "+" => numeric_result(&left, &right, left.to_f64() + right.to_f64(), false),
-            "-" => numeric_result(&left, &right, left.to_f64() - right.to_f64(), false),
-            "*" => numeric_result(&left, &right, left.to_f64() * right.to_f64(), false),
+            "+" => real_result(expression, a + b)?,
+            "-" => real_result(expression, a - b)?,
+            "*" => real_result(expression, a * b)?,
             "/" => {
-                if right.to_f64() == 0.0 {
+                if b == 0.0 {
                     return Err(RuntimeError::at(expression, "Division by zero"));
                 }
-                Value::Real(left.to_f64() / right.to_f64())
+                real_result(expression, a / b)?
             }
-            "^" => numeric_result(&left, &right, left.to_f64().powf(right.to_f64()), true),
+            "^" => real_result(expression, a.powf(b))?,
             "=" => Value::Boolean(values_equal(&left, &right)),
             "<>" => Value::Boolean(!values_equal(&left, &right)),
             "<" => Value::Boolean(compare_values(&left, &right, |a, b| a < b)),
@@ -466,6 +526,17 @@ impl Runtime {
         })
     }
 
+    fn eval_integer(&mut self, expression: &JsonValue, what: &str) -> RuntimeResult<i64> {
+        match self.eval(expression)? {
+            Value::Integer(value) => Ok(value),
+            Value::Real(value) if whole_number(value).is_some() => Ok(value as i64),
+            value => Err(RuntimeError::at(
+                expression,
+                format!("{what} must be an INTEGER, got {}", value.display()),
+            )),
+        }
+    }
+
     fn call_function(
         &mut self,
         name: &str,
@@ -474,42 +545,59 @@ impl Runtime {
     ) -> RuntimeResult<Value> {
         let upper = name.to_uppercase();
         match upper.as_str() {
-            "DIV" => {
-                let left = self.eval(&args[0])?.to_i64();
-                let right = self.eval(&args[1])?.to_i64();
+            "DIV" | "MOD" => {
+                let left = self.eval(arg(args, 0, source)?)?.to_i64();
+                let right = self.eval(arg(args, 1, source)?)?.to_i64();
                 if right == 0 {
-                    return Err(RuntimeError::at(source, "Division by zero"));
+                    let message = if upper == "DIV" {
+                        "Division by zero"
+                    } else {
+                        "Modulo by zero"
+                    };
+                    return Err(RuntimeError::at(source, message));
                 }
-                return Ok(Value::Integer(left.div_euclid(right)));
-            }
-            "MOD" => {
-                let left = self.eval(&args[0])?.to_i64();
-                let right = self.eval(&args[1])?.to_i64();
-                if right == 0 {
-                    return Err(RuntimeError::at(source, "Modulo by zero"));
-                }
-                return Ok(Value::Integer(left.rem_euclid(right)));
+                // Both truncate toward zero: DIV(-7, 2) = -3 and MOD(-7, 2) = -1.
+                let result = if upper == "DIV" {
+                    left.checked_div(right)
+                } else {
+                    left.checked_rem(right)
+                };
+                return integer_result(source, result);
             }
             "LENGTH" => {
                 return Ok(Value::Integer(
-                    self.eval(&args[0])?.display().chars().count() as i64,
+                    self.eval(arg(args, 0, source)?)?.display().chars().count() as i64,
                 ))
             }
-            "LCASE" => return Ok(Value::String(self.eval(&args[0])?.display().to_lowercase())),
-            "UCASE" => return Ok(Value::String(self.eval(&args[0])?.display().to_uppercase())),
+            "LCASE" => {
+                return Ok(Value::String(
+                    self.eval(arg(args, 0, source)?)?.display().to_lowercase(),
+                ))
+            }
+            "UCASE" => {
+                return Ok(Value::String(
+                    self.eval(arg(args, 0, source)?)?.display().to_uppercase(),
+                ))
+            }
             "SUBSTRING" => {
-                let text = self.eval(&args[0])?.display();
-                let start = self.eval(&args[1])?.to_i64().max(1) as usize - 1;
-                let length = self.eval(&args[2])?.to_i64().max(0) as usize;
+                let text = self.eval(arg(args, 0, source)?)?.display();
+                let start = self.eval(arg(args, 1, source)?)?.to_i64().max(1) as usize - 1;
+                let length = self.eval(arg(args, 2, source)?)?.to_i64().max(0) as usize;
                 return Ok(Value::String(
                     text.chars().skip(start).take(length).collect(),
                 ));
             }
             "ROUND" => {
-                let value = self.eval(&args[0])?.to_f64();
-                let places = self.eval(&args[1])?.to_i64();
+                let value = self.eval(arg(args, 0, source)?)?.to_f64();
+                let places = self.eval(arg(args, 1, source)?)?.to_i64().clamp(-308, 308);
                 let factor = 10_f64.powi(places as i32);
-                return Ok(Value::Real((value * factor).round() / factor));
+                let scaled = value * factor;
+                let rounded = if scaled.is_finite() {
+                    scaled.round() / factor
+                } else {
+                    value
+                };
+                return real_result(source, rounded);
             }
             "RANDOM" => {
                 self.rng_state = self
@@ -530,7 +618,7 @@ impl Runtime {
         };
         let flow = self.call_user_routine(&function, args, source)?;
         Ok(match flow {
-            Flow::Return(value) => value,
+            Flow::Return(value) => coerce_declared(&str_field(&function, "returnType"), value),
             Flow::Continue => Value::Null,
         })
     }
@@ -560,13 +648,20 @@ impl Runtime {
         if params.len() != args.len() {
             return Err(RuntimeError::at(source, "Routine argument count mismatch"));
         }
+        // scopes holds the global scope plus one scope per active call.
+        if self.scopes.len() > MAX_CALL_DEPTH {
+            return Err(RuntimeError::at(
+                source,
+                format!("Recursion too deep (limit {MAX_CALL_DEPTH} calls)"),
+            ));
+        }
 
         let mut scope = HashMap::new();
         let mut type_scope = HashMap::new();
         for (param, arg) in params.iter().zip(args.iter()) {
             let name = str_field(param, "name").to_lowercase();
             let type_name = nested_str(param, &["typeNode", "name"]);
-            scope.insert(name.clone(), self.eval(arg)?);
+            scope.insert(name.clone(), coerce_declared(&type_name, self.eval(arg)?));
             if !type_name.is_empty() {
                 type_scope.insert(name, type_name);
             }
@@ -590,28 +685,33 @@ impl Runtime {
         }
     }
 
+    /// One scope per routine: a name resolves to the current routine's scope, then the global one.
+    fn visible_scopes(&self) -> [usize; 2] {
+        [self.scopes.len() - 1, 0]
+    }
+
     fn assign_name(&mut self, name: &str, value: Value) {
         let key = name.to_lowercase();
-        for scope in self.scopes.iter_mut().rev() {
-            if scope.contains_key(&key) {
-                scope.insert(key, value);
-                return;
-            }
-        }
+        let index = self
+            .visible_scopes()
+            .into_iter()
+            .find(|&index| self.scopes[index].contains_key(&key))
+            .unwrap_or(self.scopes.len() - 1);
+        self.scopes[index].insert(key, value);
+    }
+
+    fn declare_name(&mut self, name: &str, value: Value) {
         self.scopes
             .last_mut()
             .expect("scope exists")
-            .insert(key, value);
+            .insert(name.to_lowercase(), value);
     }
 
     fn lookup(&self, name: &str) -> Option<Value> {
         let key = name.to_lowercase();
-        for scope in self.scopes.iter().rev() {
-            if let Some(value) = scope.get(&key) {
-                return Some(value.clone());
-            }
-        }
-        None
+        self.visible_scopes()
+            .into_iter()
+            .find_map(|index| self.scopes[index].get(&key).cloned())
     }
 
     fn declare_type(&mut self, name: &str, type_name: &str) {
@@ -623,12 +723,9 @@ impl Runtime {
 
     fn lookup_type(&self, name: &str) -> Option<String> {
         let key = name.to_lowercase();
-        for scope in self.type_scopes.iter().rev() {
-            if let Some(type_name) = scope.get(&key) {
-                return Some(type_name.clone());
-            }
-        }
-        None
+        self.visible_scopes()
+            .into_iter()
+            .find_map(|index| self.type_scopes[index].get(&key).cloned())
     }
 
     fn read_array(&mut self, target: &JsonValue) -> RuntimeResult<Value> {
@@ -649,8 +746,8 @@ impl Runtime {
         let name = str_field(target, "name");
         let key = name.to_lowercase();
         let indices = self.indices(target)?;
-        for scope in self.scopes.iter_mut().rev() {
-            if let Some(Value::Array(array)) = scope.get_mut(&key) {
+        for index in self.visible_scopes() {
+            if let Some(Value::Array(array)) = self.scopes[index].get_mut(&key) {
                 return array
                     .set(indices, value)
                     .map_err(|message| RuntimeError::at(target, message));
@@ -683,12 +780,9 @@ impl Runtime {
 
     fn target_type(&self, statement: &JsonValue) -> Option<String> {
         let target = statement.get("target")?;
-        if str_field(target, "kind") == "identifier" {
-            self.lookup_type(&str_field(target, "name"))
-        } else if str_field(target, "kind") == "arrayAccess" {
-            self.lookup_type(&str_field(target, "name"))
-        } else {
-            None
+        match str_field(target, "kind").as_str() {
+            "identifier" | "arrayAccess" => self.lookup_type(&str_field(target, "name")),
+            _ => None,
         }
     }
 
@@ -730,11 +824,19 @@ impl Runtime {
         Ok(())
     }
 
-    fn step(&mut self, source: &JsonValue) -> RuntimeResult<()> {
+    /// Counts one instruction and one nesting level. Callers decrement `depth` when done.
+    fn enter(&mut self, source: &JsonValue) -> RuntimeResult<()> {
         if self.remaining_steps == 0 {
             return Err(RuntimeError::at(source, "Instruction budget exceeded."));
         }
+        if self.depth >= MAX_NESTING_DEPTH {
+            return Err(RuntimeError::at(
+                source,
+                format!("Program nesting is too deep (limit {MAX_NESTING_DEPTH} levels)"),
+            ));
+        }
         self.remaining_steps -= 1;
+        self.depth += 1;
         Ok(())
     }
 }
@@ -877,11 +979,18 @@ fn default_value(type_name: &str) -> Value {
     }
 }
 
-fn coerce_input(value: &str, type_name: &str) -> Value {
-    match type_name {
-        "INTEGER" => Value::Integer(value.trim().parse().unwrap_or(0)),
-        "REAL" => Value::Real(value.trim().parse().unwrap_or(0.0)),
-        "BOOLEAN" => Value::Boolean(value.trim().eq_ignore_ascii_case("TRUE")),
+fn coerce_input(value: &str, type_name: &str) -> Result<Value, String> {
+    let text = value.trim();
+    let invalid = || format!("Expected {type_name}, got \"{value}\"");
+    Ok(match type_name {
+        "INTEGER" => Value::Integer(text.parse().map_err(|_| invalid())?),
+        "REAL" => match text.parse::<f64>() {
+            Ok(real) if real.is_finite() => Value::Real(real),
+            _ => return Err(invalid()),
+        },
+        "BOOLEAN" if text.eq_ignore_ascii_case("TRUE") => Value::Boolean(true),
+        "BOOLEAN" if text.eq_ignore_ascii_case("FALSE") => Value::Boolean(false),
+        "BOOLEAN" => return Err(invalid()),
         "CHAR" => Value::String(
             value
                 .chars()
@@ -890,23 +999,38 @@ fn coerce_input(value: &str, type_name: &str) -> Value {
                 .unwrap_or_default(),
         ),
         _ => Value::String(value.to_string()),
+    })
+}
+
+/// Stores a whole REAL, such as ROUND(x, 0), as an INTEGER when the destination is INTEGER.
+fn coerce_declared(type_name: &str, value: Value) -> Value {
+    match (type_name, value) {
+        ("INTEGER", Value::Real(real)) if whole_number(real).is_some() => {
+            Value::Integer(real as i64)
+        }
+        (_, value) => value,
     }
 }
 
-fn numeric_result(
-    left: &Value,
-    right: &Value,
-    value: f64,
-    force_real_for_fractional: bool,
-) -> Value {
-    if !force_real_for_fractional
-        && matches!(left, Value::Integer(_))
-        && matches!(right, Value::Integer(_))
-        && value.fract() == 0.0
-    {
-        Value::Integer(value as i64)
+fn whole_number(value: f64) -> Option<i64> {
+    (value.fract() == 0.0 && value >= i64::MIN as f64 && value < i64::MAX as f64)
+        .then_some(value as i64)
+}
+
+fn integer_result(source: &JsonValue, value: Option<i64>) -> RuntimeResult<Value> {
+    value
+        .map(Value::Integer)
+        .ok_or_else(|| RuntimeError::at(source, "Integer overflow"))
+}
+
+fn real_result(source: &JsonValue, value: f64) -> RuntimeResult<Value> {
+    if value.is_finite() {
+        Ok(Value::Real(value))
     } else {
-        Value::Real(value)
+        Err(RuntimeError::at(
+            source,
+            "REAL result is not a finite number",
+        ))
     }
 }
 
@@ -939,6 +1063,43 @@ fn compare_order(left: &str, right: &str, compare: impl Fn(f64, f64) -> bool) ->
         0.0
     };
     compare(ordering, 0.0)
+}
+
+/// Scans JSON nesting without recursion, so the parser can run with serde's depth limit disabled.
+fn json_depth_exceeds(text: &str, limit: usize) -> bool {
+    let (mut depth, mut in_string, mut escaped) = (0_usize, false, false);
+    for byte in text.bytes() {
+        if in_string {
+            match byte {
+                _ if escaped => escaped = false,
+                b'\\' => escaped = true,
+                b'"' => in_string = false,
+                _ => {}
+            }
+        } else {
+            match byte {
+                b'"' => in_string = true,
+                b'{' | b'[' => {
+                    depth += 1;
+                    if depth > limit {
+                        return true;
+                    }
+                }
+                b'}' | b']' => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+        }
+    }
+    false
+}
+
+fn arg<'a>(
+    args: &'a [JsonValue],
+    index: usize,
+    source: &JsonValue,
+) -> RuntimeResult<&'a JsonValue> {
+    args.get(index)
+        .ok_or_else(|| RuntimeError::at(source, "Routine argument count mismatch"))
 }
 
 fn required<'a>(value: &'a JsonValue, key: &str) -> RuntimeResult<&'a JsonValue> {
@@ -975,77 +1136,52 @@ fn array_field<'a>(value: &'a JsonValue, key: &str) -> &'a [JsonValue] {
         .unwrap_or(&[])
 }
 
+fn internal_error(message: String, line: usize, column: usize) -> RunResult {
+    RunResult {
+        success: false,
+        stdout: String::new(),
+        stderr: message.clone(),
+        diagnostics: vec![Diagnostic {
+            code: "RUN500".to_string(),
+            message,
+            severity: "error".to_string(),
+            line,
+            column,
+            end_line: line,
+            end_column: column,
+            hint: None,
+        }],
+        virtual_files: HashMap::new(),
+    }
+}
+
+fn run_input(input: RunInput) -> RunResult {
+    match Runtime::new(input) {
+        Ok(runtime) => runtime.run(),
+        Err(error) => internal_error(error.message, error.line, error.column),
+    }
+}
+
 pub fn run_ast_json(
     ast_json: &str,
     stdin_lines: Vec<String>,
     virtual_files: HashMap<String, Vec<String>>,
     instruction_budget: Option<usize>,
 ) -> RunResult {
-    let input = RunInput {
+    run_input(RunInput {
         ast_json: ast_json.to_string(),
         stdin_lines,
         virtual_files,
         instruction_budget,
-    };
-    match Runtime::new(input) {
-        Ok(runtime) => runtime.run(),
-        Err(error) => RunResult {
-            success: false,
-            stdout: String::new(),
-            stderr: error.message.clone(),
-            diagnostics: vec![Diagnostic {
-                code: "RUN500".to_string(),
-                message: error.message,
-                severity: "error".to_string(),
-                line: error.line,
-                column: error.column,
-                end_line: error.line,
-                end_column: error.column,
-                hint: None,
-            }],
-            virtual_files: HashMap::new(),
-        },
-    }
+        seed: None,
+    })
 }
 
 #[wasm_bindgen]
 pub fn run_pseudocode(request_json: &str) -> String {
     let result = match serde_json::from_str::<RunInput>(request_json) {
-        Ok(input) => match Runtime::new(input) {
-            Ok(runtime) => runtime.run(),
-            Err(error) => RunResult {
-                success: false,
-                stdout: String::new(),
-                stderr: error.message.clone(),
-                diagnostics: vec![Diagnostic {
-                    code: "RUN500".to_string(),
-                    message: error.message,
-                    severity: "error".to_string(),
-                    line: error.line,
-                    column: error.column,
-                    end_line: error.line,
-                    end_column: error.column,
-                    hint: None,
-                }],
-                virtual_files: HashMap::new(),
-            },
-        },
-        Err(error) => RunResult {
-            success: false,
-            stdout: String::new(),
-            stderr: format!("Invalid runtime request: {error}"),
-            diagnostics: vec![Diagnostic {
-                code: "RUN500".to_string(),
-                message: format!("Invalid runtime request: {error}"),
-                severity: "error".to_string(),
-                line: 1,
-                column: 1,
-                end_line: 1,
-                end_column: 1,
-                hint: None,
-            }],
-            virtual_files: HashMap::new(),
-        },
+        Ok(input) => run_input(input),
+        Err(error) => internal_error(format!("Invalid runtime request: {error}"), 1, 1),
     };
     serde_json::to_string(&result).unwrap_or_else(|error| {
         json!({
@@ -1082,6 +1218,10 @@ mod tests {
         json!({"startLine": 1, "startColumn": 1, "endLine": 1, "endColumn": 1})
     }
 
+    fn span_at(line: usize) -> JsonValue {
+        json!({"startLine": line, "startColumn": 1, "endLine": line, "endColumn": 1})
+    }
+
     fn program(body: Vec<JsonValue>) -> String {
         json!({"kind": "program", "body": body, "span": span()}).to_string()
     }
@@ -1094,16 +1234,84 @@ mod tests {
         json!({"kind": "literal", "value": value, "literalType": "INTEGER", "span": span()})
     }
 
+    fn real(value: f64) -> JsonValue {
+        json!({"kind": "literal", "value": value, "literalType": "REAL", "span": span()})
+    }
+
     fn string(value: &str) -> JsonValue {
         json!({"kind": "literal", "value": value, "literalType": "STRING", "span": span()})
+    }
+
+    fn binary(operator: &str, left: JsonValue, right: JsonValue) -> JsonValue {
+        json!({"kind":"binary","operator":operator,"left":left,"right":right,"span":span()})
+    }
+
+    fn call(name: &str, args: Vec<JsonValue>) -> JsonValue {
+        json!({"kind":"call","name":name,"args":args,"span":span()})
+    }
+
+    fn output(values: Vec<JsonValue>) -> JsonValue {
+        json!({"kind":"output","values":values,"span":span()})
+    }
+
+    fn assign(name: &str, value: JsonValue) -> JsonValue {
+        json!({"kind":"assignment","target":ident(name),"value":value,"span":span()})
     }
 
     fn declare(name: &str, type_name: &str) -> JsonValue {
         json!({"kind":"declare","identifier":ident(name),"typeNode":{"kind":"basic","name":type_name,"span":span()},"span":span()})
     }
 
+    fn input(name: &str) -> JsonValue {
+        json!({"kind":"input","target":ident(name),"span":span()})
+    }
+
+    fn if_then(condition: JsonValue, then_body: Vec<JsonValue>) -> JsonValue {
+        json!({"kind":"if","condition":condition,"thenBody":then_body,"elseBody":[],"span":span()})
+    }
+
+    fn param(name: &str, type_name: &str) -> JsonValue {
+        json!({"name":name,"typeNode":{"kind":"basic","name":type_name,"span":span()},"span":span()})
+    }
+
+    fn function(name: &str, params: Vec<JsonValue>, body: Vec<JsonValue>) -> JsonValue {
+        json!({"kind":"functionDefinition","name":name,"params":params,"returnType":"INTEGER","body":body,"span":span()})
+    }
+
+    fn ret(value: JsonValue) -> JsonValue {
+        json!({"kind":"return","value":value,"span":span()})
+    }
+
     fn run(ast_json: String) -> RunResult {
         run_ast_json(&ast_json, Vec::new(), HashMap::new(), Some(10_000))
+    }
+
+    fn run_with_stdin(body: Vec<JsonValue>, stdin: &[&str]) -> RunResult {
+        let stdin = stdin.iter().map(|line| line.to_string()).collect();
+        run_ast_json(&program(body), stdin, HashMap::new(), Some(10_000))
+    }
+
+    fn run_output(values: Vec<JsonValue>) -> RunResult {
+        run(program(vec![output(values)]))
+    }
+
+    fn assert_error(result: &RunResult, message: &str) {
+        assert!(
+            !result.success,
+            "expected an error, got stdout {:?}",
+            result.stdout
+        );
+        assert_eq!(result.stderr, message);
+    }
+
+    /// Debug builds use far bigger frames than release WASM, so deep tests get a large native stack.
+    fn with_big_stack<T: Send + 'static>(test: impl FnOnce() -> T + Send + 'static) -> T {
+        std::thread::Builder::new()
+            .stack_size(512 * 1024 * 1024)
+            .spawn(test)
+            .unwrap()
+            .join()
+            .unwrap()
     }
 
     #[test]
@@ -1168,5 +1376,312 @@ mod tests {
         let result = run_ast_json(&ast, Vec::new(), HashMap::new(), Some(10));
         assert!(!result.success);
         assert_eq!(result.diagnostics[0].code, "RUN408");
+    }
+
+    // RT-2
+    #[test]
+    fn local_declare_does_not_clobber_global() {
+        let result = run(program(vec![
+            declare("X", "INTEGER"),
+            json!({"kind":"procedureDefinition","name":"P","params":[],"body":[
+                declare("X", "INTEGER"),
+                assign("X", int(5)),
+            ],"span":span()}),
+            assign("X", int(1)),
+            json!({"kind":"callStatement","name":"P","args":[],"span":span()}),
+            output(vec![ident("X")]),
+        ]));
+        assert!(result.success, "{}", result.stderr);
+        assert_eq!(result.stdout, "1");
+    }
+
+    // RT-2
+    #[test]
+    fn recursive_function_keeps_its_own_locals() {
+        let result = run(program(vec![
+            function(
+                "Sum",
+                vec![param("N", "INTEGER")],
+                vec![
+                    declare("Local", "INTEGER"),
+                    assign("Local", ident("N")),
+                    if_then(binary("=", ident("N"), int(0)), vec![ret(int(0))]),
+                    ret(binary(
+                        "+",
+                        call("Sum", vec![binary("-", ident("N"), int(1))]),
+                        ident("Local"),
+                    )),
+                ],
+            ),
+            output(vec![call("Sum", vec![int(3)])]),
+        ]));
+        assert!(result.success, "{}", result.stderr);
+        assert_eq!(result.stdout, "6");
+    }
+
+    // One scope per routine: a callee sees globals, not its caller's locals.
+    #[test]
+    fn callee_does_not_see_caller_locals() {
+        let result = run(program(vec![
+            declare("X", "INTEGER"),
+            assign("X", int(1)),
+            json!({"kind":"procedureDefinition","name":"Show","params":[],"body":[output(vec![ident("X")])],"span":span()}),
+            json!({"kind":"procedureDefinition","name":"Outer","params":[],"body":[
+                declare("X", "INTEGER"),
+                assign("X", int(2)),
+                {"kind":"callStatement","name":"Show","args":[],"span":span()},
+            ],"span":span()}),
+            json!({"kind":"callStatement","name":"Outer","args":[],"span":span()}),
+        ]));
+        assert!(result.success, "{}", result.stderr);
+        assert_eq!(result.stdout, "1");
+    }
+
+    // RT-1
+    #[test]
+    fn deep_recursion_raises_a_clean_error_with_the_call_line() {
+        let result = with_big_stack(|| {
+            let recursive_call = json!({"kind":"call","name":"R","args":[binary("+", ident("N"), int(1))],"span":span_at(3)});
+            let ast = program(vec![
+                function("R", vec![param("N", "INTEGER")], vec![ret(recursive_call)]),
+                output(vec![call("R", vec![int(0)])]),
+            ]);
+            run_ast_json(&ast, Vec::new(), HashMap::new(), None)
+        });
+        assert_error(&result, "Recursion too deep (limit 250 calls)");
+        assert_eq!(result.diagnostics[0].code, "RUN001");
+        assert_eq!(result.diagnostics[0].line, 3);
+    }
+
+    // RT-3
+    #[test]
+    fn integer_arithmetic_is_exact_and_checked() {
+        let result = run_output(vec![binary("+", int(9_007_199_254_740_992), int(1))]);
+        assert_eq!(result.stdout, "9007199254740993");
+        let result = run_output(vec![int(i64::MAX)]);
+        assert_eq!(result.stdout, "9223372036854775807");
+
+        for expression in [
+            binary("*", int(3_037_000_500), int(3_037_000_500)),
+            binary("+", int(i64::MAX), int(1)),
+            binary("-", binary("-", int(0), int(i64::MAX)), int(2)),
+            json!({"kind":"unary","operator":"-","operand":binary("-", binary("-", int(0), int(i64::MAX)), int(1)),"span":span()}),
+        ] {
+            assert_error(&run_output(vec![expression]), "Integer overflow");
+        }
+    }
+
+    // RT-3
+    #[test]
+    fn out_of_range_integer_literal_is_an_error() {
+        let literal = json!({"kind":"literal","value":9_223_372_036_854_775_808_u64,"literalType":"INTEGER","span":span()});
+        assert_error(
+            &run_output(vec![literal]),
+            "Integer literal is out of range",
+        );
+    }
+
+    // RT-6
+    #[test]
+    fn invalid_input_raises_an_error() {
+        let cases = [
+            ("INTEGER", "abc", "Expected INTEGER, got \"abc\""),
+            ("INTEGER", "3.7", "Expected INTEGER, got \"3.7\""),
+            ("REAL", "x", "Expected REAL, got \"x\""),
+            ("REAL", "inf", "Expected REAL, got \"inf\""),
+            ("BOOLEAN", "yes", "Expected BOOLEAN, got \"yes\""),
+        ];
+        for (type_name, text, message) in cases {
+            let result = run_with_stdin(vec![declare("V", type_name), input("V")], &[text]);
+            assert_error(&result, message);
+        }
+    }
+
+    // RT-6
+    #[test]
+    fn valid_input_is_converted() {
+        let body = vec![
+            declare("N", "INTEGER"),
+            declare("R", "REAL"),
+            declare("B", "BOOLEAN"),
+            declare("C", "BOOLEAN"),
+            input("N"),
+            input("R"),
+            input("B"),
+            input("C"),
+            output(vec![
+                ident("N"),
+                string(" "),
+                ident("R"),
+                string(" "),
+                ident("B"),
+                string(" "),
+                ident("C"),
+            ]),
+        ];
+        let result = run_with_stdin(body, &[" -42 ", "2.5", "true", "FALSE"]);
+        assert!(result.success, "{}", result.stderr);
+        assert_eq!(result.stdout, "-42 2.5 True False");
+    }
+
+    // RT-7
+    #[test]
+    fn non_finite_real_results_raise_an_error() {
+        assert_error(
+            &run_output(vec![binary("^", real(10.0), int(400))]),
+            "REAL result is not a finite number",
+        );
+        assert_error(
+            &run_output(vec![binary("^", binary("-", int(0), int(1)), real(0.5))]),
+            "REAL result is not a finite number",
+        );
+        assert_eq!(run_output(vec![binary("/", int(1), int(4))]).stdout, "0.25");
+    }
+
+    // RT-8
+    #[test]
+    fn div_and_mod_truncate_toward_zero() {
+        let result = run_output(vec![
+            call("DIV", vec![int(-7), int(2)]),
+            string(" "),
+            call("MOD", vec![int(-7), int(2)]),
+            string(" "),
+            call("DIV", vec![int(7), int(-2)]),
+            string(" "),
+            call("MOD", vec![int(7), int(-2)]),
+        ]);
+        assert!(result.success, "{}", result.stderr);
+        assert_eq!(result.stdout, "-3 -1 -3 1");
+
+        let min = binary("-", binary("-", int(0), int(i64::MAX)), int(1));
+        assert_error(
+            &run_output(vec![call("DIV", vec![min.clone(), int(-1)])]),
+            "Integer overflow",
+        );
+        assert_error(
+            &run_output(vec![call("MOD", vec![min, int(-1)])]),
+            "Integer overflow",
+        );
+        assert_error(
+            &run_output(vec![call("DIV", vec![int(1), int(0)])]),
+            "Division by zero",
+        );
+    }
+
+    // COMP-7 / RT-4
+    #[test]
+    fn deep_but_valid_programs_run() {
+        let (nested_ifs, sum) = with_big_stack(|| {
+            let mut statement = output(vec![int(1)]);
+            for _ in 0..200 {
+                statement = if_then(
+                    json!({"kind":"literal","value":true,"literalType":"BOOLEAN","span":span()}),
+                    vec![statement],
+                );
+            }
+            let nested_ifs = run(program(vec![statement]));
+
+            let mut expression = int(1);
+            for _ in 1..500 {
+                expression = binary("+", expression, int(1));
+            }
+            (nested_ifs, run(program(vec![output(vec![expression])])))
+        });
+        assert!(nested_ifs.success, "{}", nested_ifs.stderr);
+        assert_eq!(nested_ifs.stdout, "1");
+        assert!(sum.success, "{}", sum.stderr);
+        assert_eq!(sum.stdout, "500");
+    }
+
+    #[test]
+    fn overly_deep_json_is_rejected_before_parsing() {
+        let depth = MAX_AST_JSON_DEPTH + 1;
+        let ast = format!("{}{}", "[".repeat(depth), "]".repeat(depth));
+        let result = run(ast);
+        assert_eq!(result.diagnostics[0].code, "RUN500");
+        assert_eq!(
+            result.stderr,
+            "Program nesting is too deep (limit 4000 levels)"
+        );
+        assert!(!json_depth_exceeds(r#"{"a":"[[[[\"{{"}"#, 1));
+    }
+
+    // RT-9
+    #[test]
+    fn fractional_for_step_is_a_clear_error() {
+        let result = run(program(vec![
+            declare("I", "INTEGER"),
+            json!({"kind":"for","iterator":ident("I"),"startValue":int(1),"endValue":int(3),"stepValue":real(0.5),"body":[],"span":span()}),
+        ]));
+        assert_error(&result, "FOR STEP must be an INTEGER, got 0.5");
+    }
+
+    // RT-10
+    #[test]
+    fn opening_a_missing_file_for_read_fails_without_creating_it() {
+        let result = run(program(vec![
+            json!({"kind":"openfile","fileIdentifier":string("missing.txt"),"mode":"READ","span":span()}),
+        ]));
+        assert_error(&result, "File missing.txt does not exist");
+        assert!(result.virtual_files.is_empty());
+    }
+
+    // RT-11
+    #[test]
+    fn random_uses_the_request_seed() {
+        let random_output = |seed: Option<u64>| {
+            run_input(RunInput {
+                ast_json: program(vec![output(vec![
+                    call("RANDOM", vec![]),
+                    string(" "),
+                    call("RANDOM", vec![]),
+                ])]),
+                stdin_lines: Vec::new(),
+                virtual_files: HashMap::new(),
+                instruction_budget: None,
+                seed,
+            })
+            .stdout
+        };
+        assert_eq!(random_output(None), random_output(None));
+        assert_eq!(random_output(Some(7)), random_output(Some(7)));
+        assert_ne!(random_output(Some(7)), random_output(Some(8)));
+        assert_ne!(random_output(Some(7)), random_output(None));
+
+        let request =
+            r#"{"ast_json":"{\"body\":[]}","stdin_lines":[],"virtual_files":{},"seed":42}"#;
+        assert!(run_pseudocode(request).contains("\"success\":true"));
+    }
+
+    #[test]
+    fn string_functions_accept_char_values() {
+        let char_literal = json!({"kind":"literal","value":"W","literalType":"CHAR","span":span()});
+        let result = run_output(vec![
+            call("LCASE", vec![char_literal.clone()]),
+            call("UCASE", vec![string("w")]),
+            call("LENGTH", vec![char_literal]),
+        ]);
+        assert!(result.success, "{}", result.stderr);
+        assert_eq!(result.stdout, "wW1");
+    }
+
+    #[test]
+    fn whole_real_assigned_to_integer_is_stored_as_integer() {
+        let ast = program(vec![
+            declare("N", "INTEGER"),
+            assign("N", call("ROUND", vec![real(3.7), int(0)])),
+            output(vec![ident("N")]),
+        ]);
+        let mut runtime = Runtime::new(RunInput {
+            ast_json: ast,
+            stdin_lines: Vec::new(),
+            virtual_files: HashMap::new(),
+            instruction_budget: None,
+            seed: None,
+        })
+        .unwrap();
+        runtime.execute_main().unwrap();
+        assert_eq!(runtime.lookup("N"), Some(Value::Integer(4)));
+        assert_eq!(runtime.stdout, vec!["4".to_string()]);
     }
 }

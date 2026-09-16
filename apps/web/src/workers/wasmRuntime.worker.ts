@@ -10,6 +10,7 @@ type RunWorkerMessage = {
     astJson: string;
     stdinLines: string[];
     virtualFiles: Record<string, string[]>;
+    seed?: number;
   };
 };
 
@@ -24,6 +25,7 @@ type WorkerRunResponseMessage = {
   kind: "run-result";
   id: number;
   result: RunResult;
+  crashed?: boolean;
 };
 
 type WorkerStatusMessage = {
@@ -87,7 +89,14 @@ function ensureAbsoluteWorkerFetch() {
 async function ensureRuntimeReady() {
   if (!runtimeReady) {
     ensureAbsoluteWorkerFetch();
-    runtimeReady = initRuntime().then(() => undefined);
+    runtimeReady = initRuntime().then(
+      () => undefined,
+      (error: unknown) => {
+        // Don't cache a failed load, so the next request retries it.
+        runtimeReady = null;
+        throw error;
+      },
+    );
   }
 
   await runtimeReady;
@@ -146,17 +155,20 @@ self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
         ast_json: request.astJson,
         stdin_lines: request.stdinLines,
         virtual_files: request.virtualFiles,
+        seed: request.seed,
       }),
     );
     const result = JSON.parse(resultJson) as RunResult;
     const response: WorkerRunResponseMessage = { kind: "run-result", id, result };
     self.postMessage(response);
   } catch (error) {
+    // A WASM trap can leave the instance corrupted, so tell the runner to start a new worker.
     const message = error instanceof Error ? error.message : "Unknown worker error";
     const response: WorkerRunResponseMessage = {
       kind: "run-result",
       id,
       result: runtimeFailureResult(message, request.virtualFiles),
+      crashed: true,
     };
     self.postMessage(response);
   }
