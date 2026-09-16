@@ -1,5 +1,5 @@
 // Editor UI strings. English is the source of truth; keep values byte-identical
-// to the strings the tests in src/app/[locale]/(public)/page.test.tsx assert on.
+// to the strings the tests in src/app/[locale]/app/page.test.tsx assert on.
 export const editorEn = {
   common: { cancel: "Cancel", close: "Close", delete: "Delete", dismiss: "Dismiss", beta: "Beta" },
   toolbar: {
@@ -27,7 +27,6 @@ export const editorEn = {
     moveTopLevel: "Move to Top Level", rename: "Rename", explorerActions: "Explorer actions",
     itemsSelected: (count: number) => `${count} items selected`, folderActions: "Folder actions", fileActions: "File actions", batchActions: "Batch actions",
     collapseFolder: "Collapse Folder", expandFolder: "Expand Folder", deleteItems: (count: number) => `Delete ${count} items`,
-    collapse: (name: string) => `Collapse ${name}`, expand: (name: string) => `Expand ${name}`,
     noFileSelected: "No file selected", createAFile: "Create a file", fileName: "File name", itemName: "Item name",
     createNewFile: "Create New File", createAndOpen: "Create & Open", renameItem: "Rename Item", currentName: "Current name:",
     saveName: "Save Name", confirmDelete: "Confirm Delete", deleteOne: (name: string) => `Delete "${name}"?`,
@@ -38,11 +37,10 @@ export const editorEn = {
     closeTerminal: "Close terminal", input: "Terminal input", inputPlaceholder: "Type here and press Enter", send: "Send", running: "Running…",
     resizeOutput: "Resize output", resizeTerminal: "Resize terminal", resizeSidebar: "Resize sidebar",
   },
-  diagnostics: { none: "No diagnostics.", empty: "Compile the active file to see errors, warnings, and hints.", hint: "Hint:" },
-  virtualFiles: { newName: "New virtual file name", enterName: "Enter a file name.", exists: "File already exists.", add: "Add", delete: "Delete", empty: "No virtual files.", records: "One line per record", createFirst: "Create a virtual file to edit contents." },
+  diagnostics: { hint: "Hint:" },
   autocomplete: { integerQuotient: "Integer quotient", integerRemainder: "Integer remainder", stringLength: "String length", lowerCase: "Lower-case conversion", upperCase: "Upper-case conversion", substring: "Part of a string", round: "Round a real value", random: "Random number from 0 to 1 inclusive", printAlias: "PRINT (alias)", outputAlias: "Alias for OUTPUT", quickStarter: "Quick starter" },
   flowchart: {
-    name: "Flowchart", createFirst: "Create a file first", createFirstDescription: "Flowcharts are linked to pseudocode files. Create and name a new file to start building your flowchart.",
+    name: "Flowchart", yes: "Yes", no: "No", createFirst: "Create a file first", createFirstDescription: "Flowcharts are linked to pseudocode files. Create and name a new file to start building your flowchart.",
     blocks: "Blocks", dragOntoFlow: "Drag onto the flow", generateCode: "Generate Code", clearCanvas: "Clear Canvas", hidePalette: "Hide palette", showPalette: "Show palette",
     inspector: "Inspector", inspectorSelected: "Edit the selected block and its visible content.", inspectorEmpty: "Select a block to configure input, output, or the lines inside a process.", selected: "Selected", label: "Label", mode: "Mode", input: "Input", output: "Output", variable: "Variable", valueExpression: "Value or expression", blockTitle: "Block title", blockLines: "Block lines", addLine: "Add line",
     line: (number: number) => `Line ${number}`, removeLine: (number: number) => `Remove process line ${number}`, condition: "Condition",

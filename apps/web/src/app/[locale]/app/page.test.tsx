@@ -3,10 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createContext, useState } from "react";
 import { createDefaultWorkspace, createDocument, createEmptyWorkspace, createFolder, getChildNodes, setActiveDocument, type WorkspaceState } from "@pseudobuild/workspace";
 import type { WorkspacePersistenceMode } from "@/lib/platform";
+import type { CloudSaveResult, LoadedWorkspace, LocalWorkspaceRecord } from "@/lib/storage";
+import { editorEn } from "@/i18n/messages/editor.en";
 
-const { loadWorkspaceMock, saveWorkspaceMock, compilePseudocodeMock, runMock, authState } = vi.hoisted(() => ({
-  loadWorkspaceMock: vi.fn<(_sampleSource: string, options?: { mode?: WorkspacePersistenceMode }) => Promise<WorkspaceState>>(),
-  saveWorkspaceMock: vi.fn<(state: WorkspaceState, options?: { mode?: WorkspacePersistenceMode }) => Promise<void>>(),
+const { loadWorkspaceMock, writeLocalWorkspaceMock, saveWorkspaceToCloudMock, compilePseudocodeMock, runMock, authState } = vi.hoisted(() => ({
+  loadWorkspaceMock: vi.fn<(_sampleSource: string, options?: { mode?: WorkspacePersistenceMode }) => Promise<LoadedWorkspace>>(),
+  writeLocalWorkspaceMock: vi.fn<(cacheKey: string, record: LocalWorkspaceRecord) => Promise<void>>(),
+  saveWorkspaceToCloudMock: vi.fn<(state: WorkspaceState, baseRevision: number, options?: object) => Promise<CloudSaveResult>>(),
   compilePseudocodeMock: vi.fn(),
   runMock: vi.fn(),
   authState: {
@@ -109,8 +112,31 @@ vi.mock("@/lib/auth-components", () => ({
 
 vi.mock("@/lib/storage", () => ({
   loadWorkspace: loadWorkspaceMock,
-  saveWorkspace: saveWorkspaceMock,
+  writeLocalWorkspace: writeLocalWorkspaceMock,
+  saveWorkspaceToCloud: saveWorkspaceToCloudMock,
+  fetchCloudWorkspace: vi.fn(async () => ({ ok: false })),
+  mergeConflict: (local: WorkspaceState) => local,
 }));
+
+/** Makes loadWorkspace resolve to `workspace`, with the cache key the real loader uses for each mode. */
+function mockLoadedWorkspace(workspace: WorkspaceState) {
+  loadWorkspaceMock.mockImplementation(async (_sampleSource, options) => ({
+    workspace,
+    cacheKey: options?.mode === "memory" ? null : options?.mode === "cloud" ? "user:user_123" : "local",
+    revision: 0,
+    dirty: false,
+    issue: null,
+  }));
+}
+
+/** The workspace most recently written to this device's storage. */
+function lastLocallySavedWorkspace(): WorkspaceState {
+  const record = writeLocalWorkspaceMock.mock.lastCall?.[1];
+  if (!record) {
+    throw new Error("Nothing was written locally yet.");
+  }
+  return record.workspace;
+}
 
 vi.mock("@/compiler", () => ({
   compilePseudocode: compilePseudocodeMock,
@@ -161,6 +187,13 @@ vi.mock("@/app/components/flowchart/FlowchartEditor", () => ({
 }));
 
 import HomePage from "@/app/[locale]/app/page";
+
+// jsdom has HTMLDialogElement but no showModal().
+if (typeof HTMLDialogElement.prototype.showModal !== "function") {
+  HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+    this.setAttribute("open", "");
+  };
+}
 
 function createWorkspaceFixture(activeDocumentId = "doc-main") {
   let workspace = createDefaultWorkspace({
@@ -229,21 +262,11 @@ function mockRowRect(element: Element, top = 0, height = 40) {
 }
 
 function getExplorerButton(name: string): HTMLElement {
-  const match = screen
-    .getAllByRole("button", { name })
-    .find((button) => button.closest('[data-workspace-row="true"]'));
-  if (!match) {
-    throw new Error(`Explorer button "${name}" not found.`);
-  }
-  return match;
+  return screen.getByRole("treeitem", { name });
 }
 
 function getExplorerRow(name: string): HTMLElement {
-  const row = getExplorerButton(name).closest('[data-workspace-row="true"]');
-  if (!row) {
-    throw new Error(`Explorer row "${name}" not found.`);
-  }
-  return row as HTMLElement;
+  return getExplorerButton(name);
 }
 
 function getExplorerHeaderButton(name: string): HTMLElement {
@@ -268,7 +291,10 @@ describe("HomePage workspace flow", () => {
   beforeEach(() => {
     setDeployedBrowserRuntime();
     loadWorkspaceMock.mockReset();
-    saveWorkspaceMock.mockReset();
+    writeLocalWorkspaceMock.mockReset();
+    writeLocalWorkspaceMock.mockResolvedValue();
+    saveWorkspaceToCloudMock.mockReset();
+    saveWorkspaceToCloudMock.mockResolvedValue({ ok: true, revision: 1 });
     compilePseudocodeMock.mockReset();
     runMock.mockReset();
     authState.user = {
@@ -301,7 +327,7 @@ describe("HomePage workspace flow", () => {
   });
 
   it("opens documents and updates the editor content", async () => {
-    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+    mockLoadedWorkspace(createWorkspaceFixture());
     render(<HomePage />);
 
     expect(await screen.findByRole("textbox", { name: "Mock editor" })).toHaveValue('OUTPUT "Main"');
@@ -314,7 +340,7 @@ describe("HomePage workspace flow", () => {
   });
 
   it("opens the manual inside the workspace", async () => {
-    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+    mockLoadedWorkspace(createWorkspaceFixture());
     render(<HomePage />);
 
     const editor = await screen.findByRole("textbox", { name: "Mock editor" });
@@ -332,7 +358,7 @@ describe("HomePage workspace flow", () => {
   });
 
   it("uses the shared create file dialog from the sidebar while keeping the pseudo extension fixed", async () => {
-    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+    mockLoadedWorkspace(createWorkspaceFixture());
     render(<HomePage />);
     await screen.findByRole("textbox", { name: "Mock editor" });
 
@@ -349,12 +375,15 @@ describe("HomePage workspace flow", () => {
     await waitFor(() => {
       expect(getExplorerButton("Renamed Doc.pseudo")).toBeInTheDocument();
     });
-    expect(saveWorkspaceMock).toHaveBeenCalled();
+    await waitFor(() => {
+      const names = Object.values(lastLocallySavedWorkspace().nodes).map((node) => node.name);
+      expect(names).toContain("Renamed Doc.pseudo");
+    });
   });
 
   it("creates the first desktop file from the starter dialog and opens the editor", async () => {
     setDesktopRuntime();
-    loadWorkspaceMock.mockResolvedValue(createEmptyWorkspace("2026-03-15T00:00:00.000Z"));
+    mockLoadedWorkspace(createEmptyWorkspace("2026-03-15T00:00:00.000Z"));
     render(<HomePage />);
 
     expect(await screen.findByText("Welcome to Pseudo Build")).toBeInTheDocument();
@@ -373,7 +402,7 @@ describe("HomePage workspace flow", () => {
 
   it("live updates the editor when flowchart code changes", async () => {
     enableFlowchartModeBeta();
-    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+    mockLoadedWorkspace(createWorkspaceFixture());
     render(<HomePage />);
 
     expect(await screen.findByRole("textbox", { name: "Mock editor" })).toHaveValue('OUTPUT "Main"');
@@ -390,7 +419,7 @@ describe("HomePage workspace flow", () => {
 
   it("keeps the flowchart connected to the current pseudocode source", async () => {
     enableFlowchartModeBeta();
-    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+    mockLoadedWorkspace(createWorkspaceFixture());
     render(<HomePage />);
 
     const editor = await screen.findByRole("textbox", { name: "Mock editor" });
@@ -409,7 +438,7 @@ describe("HomePage workspace flow", () => {
 
   it("keeps the flowchart visible while terminal output appears underneath", async () => {
     enableFlowchartModeBeta();
-    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+    mockLoadedWorkspace(createWorkspaceFixture());
     compilePseudocodeMock.mockReturnValue({
       success: true,
       diagnostics: [],
@@ -439,7 +468,7 @@ describe("HomePage workspace flow", () => {
 
   it("requires enabling Flowchart mode beta from settings before opening it", async () => {
     authState.user = null;
-    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+    mockLoadedWorkspace(createWorkspaceFixture());
     render(<HomePage />);
 
     await screen.findByRole("textbox", { name: "Mock editor" });
@@ -448,7 +477,7 @@ describe("HomePage workspace flow", () => {
       screen.queryByRole("button", { name: "Switch to flowchart view" }),
     ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Settings" });
     expect(within(dialog).getByText("Beta features")).toBeInTheDocument();
@@ -464,22 +493,22 @@ describe("HomePage workspace flow", () => {
   });
 
   it("reorders documents through workspace controls", async () => {
-    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+    mockLoadedWorkspace(createWorkspaceFixture());
     render(<HomePage />);
     await screen.findByRole("textbox", { name: "Mock editor" });
 
     fireEvent.contextMenu(getExplorerButton("Helper.pseudo"));
-    fireEvent.click(await screen.findByRole("button", { name: "Move Up" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Move Up" }));
 
     await waitFor(() => {
-      const savedState = saveWorkspaceMock.mock.lastCall?.[0] as WorkspaceState;
+      const savedState = lastLocallySavedWorkspace();
       const order = getChildNodes(savedState, savedState.rootFolderId).map((node) => node.name);
       expect(order.slice(0, 2)).toEqual(["Helper.pseudo", "main.pseudo"]);
     });
   });
 
   it("opens explorer actions from a touch long press", async () => {
-    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+    mockLoadedWorkspace(createWorkspaceFixture());
     render(<HomePage />);
     await screen.findByRole("textbox", { name: "Mock editor" });
 
@@ -506,7 +535,7 @@ describe("HomePage workspace flow", () => {
       });
 
       expect(screen.getByRole("menu", { name: "Explorer actions" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
+      expect(screen.getByRole("menuitem", { name: "Rename" })).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }
@@ -521,21 +550,82 @@ describe("HomePage workspace flow", () => {
       id: "doc-third",
       now: "2026-03-15T00:02:00.000Z",
     });
-    loadWorkspaceMock.mockResolvedValue(workspace);
+    mockLoadedWorkspace(workspace);
     render(<HomePage />);
     await screen.findByRole("textbox", { name: "Mock editor" });
 
     fireEvent.contextMenu(getExplorerButton("Helper.pseudo"));
-    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
     expect(screen.getByText('Delete "Helper.pseudo"?')).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
     await waitFor(() => {
-      const savedState = saveWorkspaceMock.mock.lastCall?.[0] as WorkspaceState;
+      const savedState = lastLocallySavedWorkspace();
       expect(Object.values(savedState.nodes).filter((node) => node.type === "document")).toHaveLength(2);
       expect(savedState.nodes["doc-helper"]).toBeUndefined();
       expect(savedState.nodes["doc-third"]).toBeDefined();
     });
+  });
+
+  it("closes the delete dialog with Escape and returns focus to the explorer row", async () => {
+    mockLoadedWorkspace(createWorkspaceFixture());
+    render(<HomePage />);
+    await screen.findByRole("textbox", { name: "Mock editor" });
+
+    const helperRow = getExplorerRow("Helper.pseudo");
+    act(() => helperRow.focus());
+    fireEvent.click(helperRow);
+    fireEvent.keyDown(helperRow, { key: "Delete" });
+
+    const dialog = await screen.findByRole("dialog", { name: "Confirm Delete" });
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toHaveFocus();
+
+    fireEvent.keyDown(dialog, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(helperRow).toHaveFocus();
+    expect(getExplorerRow("Helper.pseudo")).toBeInTheDocument();
+  });
+
+  it("closes the rename dialog with Escape after opening it from the context menu", async () => {
+    mockLoadedWorkspace(createWorkspaceFixture());
+    render(<HomePage />);
+    await screen.findByRole("textbox", { name: "Mock editor" });
+
+    const helperRow = getExplorerRow("Helper.pseudo");
+    fireEvent.contextMenu(helperRow);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Rename Item" });
+    const nameInput = within(dialog).getByRole("textbox", { name: "Item name" });
+    expect(nameInput).toHaveFocus();
+
+    fireEvent.keyDown(nameInput, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(helperRow).toHaveFocus();
+  });
+
+  it("uses the phone layout on narrow windows regardless of user agent and hides the flowchart switch", async () => {
+    const originalWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 390 });
+    enableFlowchartModeBeta();
+    mockLoadedWorkspace(createWorkspaceFixture());
+
+    try {
+      render(<HomePage />);
+      await screen.findByRole("textbox", { name: "Mock editor" });
+
+      fireEvent.click(screen.getByRole("button", { name: "SETTINGS" }));
+      expect(screen.getByText("Theme")).toBeInTheDocument();
+      expect(screen.queryByRole("switch", { name: "Enable Flowchart mode beta" })).not.toBeInTheDocument();
+    } finally {
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: originalWidth });
+    }
   });
 
   it("drags a file into a folder", async () => {
@@ -546,7 +636,7 @@ describe("HomePage workspace flow", () => {
       id: "folder-archive",
       now: "2026-03-15T00:02:00.000Z",
     });
-    loadWorkspaceMock.mockResolvedValue(workspace);
+    mockLoadedWorkspace(workspace);
     const { container } = render(<HomePage />);
     await screen.findByRole("textbox", { name: "Mock editor" });
 
@@ -561,7 +651,7 @@ describe("HomePage workspace flow", () => {
     fireEvent.drop(folderRow, { dataTransfer, clientY: 20 });
 
     await waitFor(() => {
-      const savedState = saveWorkspaceMock.mock.lastCall?.[0] as WorkspaceState;
+      const savedState = lastLocallySavedWorkspace();
       expect(savedState.nodes["doc-main"].parentId).toBe("folder-archive");
     });
 
@@ -582,7 +672,7 @@ describe("HomePage workspace flow", () => {
       id: "folder-target",
       now: "2026-03-15T00:03:00.000Z",
     });
-    loadWorkspaceMock.mockResolvedValue(workspace);
+    mockLoadedWorkspace(workspace);
     render(<HomePage />);
     await screen.findByRole("textbox", { name: "Mock editor" });
 
@@ -597,14 +687,14 @@ describe("HomePage workspace flow", () => {
     fireEvent.drop(targetRow, { dataTransfer, clientY: 20 });
 
     await waitFor(() => {
-      const savedState = saveWorkspaceMock.mock.lastCall?.[0] as WorkspaceState;
+      const savedState = lastLocallySavedWorkspace();
       expect(savedState.nodes["folder-source"].parentId).toBe("folder-target");
     });
   });
 
   it("compiles and runs the active document and clears pending input on switch", async () => {
     const workspace = createWorkspaceFixture("doc-helper");
-    loadWorkspaceMock.mockResolvedValue(workspace);
+    mockLoadedWorkspace(workspace);
     compilePseudocodeMock.mockReturnValue({
       success: true,
       diagnostics: [],
@@ -639,7 +729,7 @@ describe("HomePage workspace flow", () => {
   });
 
   it("lets the terminal scroll region keep its position when the user scrolls away from the bottom", async () => {
-    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture("doc-helper"));
+    mockLoadedWorkspace(createWorkspaceFixture("doc-helper"));
     compilePseudocodeMock.mockReturnValue({
       success: true,
       diagnostics: [],
@@ -709,7 +799,7 @@ describe("HomePage workspace flow", () => {
   });
 
   it("warns before refresh only while workspace changes are pending save", async () => {
-    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+    mockLoadedWorkspace(createWorkspaceFixture());
     render(<HomePage />);
 
     const editor = await screen.findByRole("textbox", { name: "Mock editor" });
@@ -729,11 +819,10 @@ describe("HomePage workspace flow", () => {
       expect(pendingEvent.defaultPrevented).toBe(true);
 
       await act(async () => {
-        vi.advanceTimersByTime(5 * 60 * 1000);
-        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
       });
 
-      expect(saveWorkspaceMock).toHaveBeenCalled();
+      expect(saveWorkspaceToCloudMock).toHaveBeenCalled();
 
       const savedEvent = new Event("beforeunload", { cancelable: true });
       Object.defineProperty(savedEvent, "returnValue", {
@@ -750,11 +839,11 @@ describe("HomePage workspace flow", () => {
   });
 
   it("lets the user set the autosave interval from settings", async () => {
-    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+    mockLoadedWorkspace(createWorkspaceFixture());
     render(<HomePage />);
 
     const editor = await screen.findByRole("textbox", { name: "Mock editor" });
-    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open settings" }));
 
     const intervalInput = await screen.findByRole("combobox", {
       name: "Autosave interval minutes",
@@ -769,26 +858,23 @@ describe("HomePage workspace flow", () => {
       fireEvent.change(editor, { target: { value: 'OUTPUT "One minute"' } });
 
       await act(async () => {
-        vi.advanceTimersByTime(59_999);
-        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(59_999);
       });
-      expect(saveWorkspaceMock).not.toHaveBeenCalled();
+      // Typing reaches this device after about 500 ms; only the cloud upload waits for the interval.
+      expect(writeLocalWorkspaceMock).toHaveBeenCalled();
+      expect(saveWorkspaceToCloudMock).not.toHaveBeenCalled();
 
       await act(async () => {
-        vi.advanceTimersByTime(1);
-        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(1);
       });
-      expect(saveWorkspaceMock).toHaveBeenCalledWith(
-        expect.anything(),
-        expect.objectContaining({ mode: "cloud" }),
-      );
+      expect(saveWorkspaceToCloudMock).toHaveBeenCalledWith(expect.anything(), 0, expect.anything());
     } finally {
       vi.useRealTimers();
     }
   });
 
   it("does not warn before refresh when the workspace is still empty", async () => {
-    loadWorkspaceMock.mockResolvedValue(createEmptyWorkspace("2026-03-15T00:00:00.000Z"));
+    mockLoadedWorkspace(createEmptyWorkspace("2026-03-15T00:00:00.000Z"));
     render(<HomePage />);
 
     expect(await screen.findByText("Welcome to Pseudo Build")).toBeInTheDocument();
@@ -806,13 +892,13 @@ describe("HomePage workspace flow", () => {
 
   it("shows Clerk sign-in controls and asks for sign-in before cloud saving", async () => {
     authState.user = null;
-    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+    mockLoadedWorkspace(createWorkspaceFixture());
     render(<HomePage />);
 
     await screen.findByRole("textbox", { name: "Mock editor" });
-    expect(loadWorkspaceMock).toHaveBeenCalledWith(expect.any(String), { mode: "memory" });
+    expect(loadWorkspaceMock).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ mode: "memory" }));
     const signInButton = screen.getByRole("button", { name: "Log In" });
-    expect(signInButton).toHaveClass("bg-[var(--accent)]", "text-white");
+    expect(signInButton).toHaveClass("bg-[var(--accent)]", "text-[var(--on-accent)]");
     expect(screen.queryByText(/Need an account/i)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Save workspace" }));
@@ -820,41 +906,44 @@ describe("HomePage workspace flow", () => {
     const dialog = await screen.findByRole("dialog", { name: "Sign in to save" });
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Log In" })).toBeInTheDocument();
-    expect(saveWorkspaceMock).not.toHaveBeenCalled();
+    expect(writeLocalWorkspaceMock).not.toHaveBeenCalled();
+    expect(saveWorkspaceToCloudMock).not.toHaveBeenCalled();
   });
 
   it("saves locally in the desktop shell without showing browser sign-in controls", async () => {
     authState.user = null;
     setDesktopRuntime();
-    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+    mockLoadedWorkspace(createWorkspaceFixture());
     render(<HomePage />);
 
     await screen.findByRole("textbox", { name: "Mock editor" });
-    expect(loadWorkspaceMock).toHaveBeenCalledWith(expect.any(String), { mode: "local" });
+    expect(loadWorkspaceMock).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ mode: "local" }));
     expect(screen.queryByRole("button", { name: "Log In" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Save workspace" }));
 
     await waitFor(() => {
-      expect(saveWorkspaceMock).toHaveBeenCalledWith(expect.anything(), { mode: "local" });
+      expect(writeLocalWorkspaceMock).toHaveBeenCalledWith("local", expect.objectContaining({ dirty: false }));
     });
+    expect(saveWorkspaceToCloudMock).not.toHaveBeenCalled();
   });
 
   it("saves locally on localhost without showing browser sign-in controls", async () => {
     authState.user = null;
     setLocalBrowserRuntime();
-    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+    mockLoadedWorkspace(createWorkspaceFixture());
     render(<HomePage />);
 
     await screen.findByRole("textbox", { name: "Mock editor" });
-    expect(loadWorkspaceMock).toHaveBeenCalledWith(expect.any(String), { mode: "local" });
+    expect(loadWorkspaceMock).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ mode: "local" }));
     expect(screen.queryByRole("button", { name: "Log In" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Save workspace" }));
 
     await waitFor(() => {
-      expect(saveWorkspaceMock).toHaveBeenCalledWith(expect.anything(), { mode: "local" });
+      expect(writeLocalWorkspaceMock).toHaveBeenCalledWith("local", expect.objectContaining({ dirty: false }));
     });
+    expect(saveWorkspaceToCloudMock).not.toHaveBeenCalled();
   });
 
   it("saves the workspace to cloud when signed in", async () => {
@@ -864,16 +953,17 @@ describe("HomePage workspace flow", () => {
       firstName: "Alex",
       lastName: null,
     };
-    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+    mockLoadedWorkspace(createWorkspaceFixture());
     render(<HomePage />);
 
     await screen.findByRole("textbox", { name: "Mock editor" });
     fireEvent.click(screen.getByRole("button", { name: "Save workspace" }));
 
     await waitFor(() => {
-      expect(saveWorkspaceMock).toHaveBeenCalledWith(
+      expect(saveWorkspaceToCloudMock).toHaveBeenCalledWith(
         expect.anything(),
-        expect.objectContaining({ mode: "cloud" }),
+        0,
+        expect.objectContaining({ getAuthToken: expect.any(Function) }),
       );
     });
 
@@ -881,14 +971,14 @@ describe("HomePage workspace flow", () => {
   });
 
   it("shows a loading save control while autosave is in progress", async () => {
-    let resolveSave: (() => void) | null = null;
-    saveWorkspaceMock.mockImplementation(
+    let resolveSave: ((result: CloudSaveResult) => void) | null = null;
+    saveWorkspaceToCloudMock.mockImplementation(
       () =>
-        new Promise<void>((resolve) => {
+        new Promise<CloudSaveResult>((resolve) => {
           resolveSave = resolve;
         }),
     );
-    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
+    mockLoadedWorkspace(createWorkspaceFixture());
     render(<HomePage />);
 
     const editor = await screen.findByRole("textbox", { name: "Mock editor" });
@@ -898,15 +988,14 @@ describe("HomePage workspace flow", () => {
       fireEvent.change(editor, { target: { value: 'OUTPUT "Autosaving"' } });
 
       await act(async () => {
-        vi.advanceTimersByTime(5 * 60 * 1000);
-        await Promise.resolve();
+        await vi.advanceTimersByTimeAsync(5 * 60 * 1000);
       });
 
       expect(screen.getAllByText("Saving").length).toBeGreaterThan(0);
 
       await act(async () => {
-        resolveSave?.();
-        await Promise.resolve();
+        resolveSave?.({ ok: true, revision: 1 });
+        await vi.advanceTimersByTimeAsync(0);
       });
 
       expect(screen.queryAllByText("Saving")).toHaveLength(0);
@@ -916,8 +1005,7 @@ describe("HomePage workspace flow", () => {
   });
 
   it("shows saved after a successful manual save", async () => {
-    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
-    saveWorkspaceMock.mockResolvedValue();
+    mockLoadedWorkspace(createWorkspaceFixture());
     render(<HomePage />);
 
     await screen.findByRole("textbox", { name: "Mock editor" });
@@ -929,8 +1017,13 @@ describe("HomePage workspace flow", () => {
   });
 
   it("shows an error after a failed manual save", async () => {
-    loadWorkspaceMock.mockResolvedValue(createWorkspaceFixture());
-    saveWorkspaceMock.mockRejectedValue(new Error("Convex unavailable"));
+    mockLoadedWorkspace(createWorkspaceFixture());
+    saveWorkspaceToCloudMock.mockResolvedValue({
+      ok: false,
+      status: 503,
+      code: "upstream_error",
+      message: "Convex unavailable",
+    });
     render(<HomePage />);
 
     await screen.findByRole("textbox", { name: "Mock editor" });
@@ -939,6 +1032,6 @@ describe("HomePage workspace flow", () => {
     await waitFor(() => {
       expect(screen.getAllByText("Save failed").length).toBeGreaterThan(0);
     });
-    expect(screen.getByText("Save failed. Changes remain on this device.")).toBeInTheDocument();
+    expect(screen.getByText(editorEn.sync.saveFailedKept)).toBeInTheDocument();
   });
 });

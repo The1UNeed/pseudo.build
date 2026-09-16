@@ -66,6 +66,16 @@ function uppercaseKeywordsOutsideLiterals(code: string, keywordLookup: ReadonlyM
   return result;
 }
 
+const ASSIGNMENT_TARGET = /^\s*(?:(?:FOR|CONSTANT)\s+)?[A-Za-z_][A-Za-z0-9_]*(?:\[[^\]]*\])?\s*$/i;
+
+/**
+ * True when `<-` typed after this line prefix is an assignment at the start of a statement
+ * (`Total <-`, `Scores[i] <-`, `FOR i <-`), not a comparison such as `IF Temp<-5`.
+ */
+export function isAssignmentArrowPrefix(textBeforeArrow: string): boolean {
+  return ASSIGNMENT_TARGET.test(textBeforeArrow);
+}
+
 export function autoCorrectPseudocodeLine(line: string, keywordLookup: ReadonlyMap<string, string>): string {
   const commentStart = findCommentStart(line);
   if (commentStart < 0) {

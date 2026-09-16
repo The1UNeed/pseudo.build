@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { autoCorrectPseudocodeLine } from "@/app/components/pseudocodeAutocorrect";
+import { autoCorrectPseudocodeLine, isAssignmentArrowPrefix } from "@/app/components/pseudocodeAutocorrect";
 
 const KEYWORDS = [
   "IF",
@@ -55,5 +55,19 @@ describe("autoCorrectPseudocodeLine", () => {
     const input = "OUTPUT Name // if then else";
     const output = autoCorrectPseudocodeLine(input, KEYWORD_LOOKUP);
     expect(output).toBe("OUTPUT Name // if then else");
+  });
+});
+
+describe("isAssignmentArrowPrefix", () => {
+  it("accepts assignment targets at the start of a statement", () => {
+    for (const prefix of ["Total ", "    Total", "Scores[Index] ", "Grid[Row, Col]", "FOR Number ", "for i", "CONSTANT Pi "]) {
+      expect(isAssignmentArrowPrefix(prefix)).toBe(true);
+    }
+  });
+
+  it("rejects comparisons with negative numbers and other non-assignments", () => {
+    for (const prefix of ["IF Temp", "IF Temp ", "WHILE X", "UNTIL Count", "OUTPUT A", "Total + Count", ""]) {
+      expect(isAssignmentArrowPrefix(prefix)).toBe(false);
+    }
   });
 });

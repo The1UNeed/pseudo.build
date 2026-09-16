@@ -10,6 +10,7 @@ import {
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
   UIEvent as ReactUIEvent,
+  memo,
   useCallback,
   useEffect,
   useMemo,
@@ -45,6 +46,7 @@ import {
   type WorkspaceEditorPanelInstance,
 } from "@pseudobuild/workspace";
 import { Breadcrumbs } from "@/app/components/Breadcrumbs";
+import { Dialog } from "@/app/components/Dialog";
 import { WorkspaceSidebar } from "@/app/components/WorkspaceSidebar";
 import ManualContent from "@/app/[locale]/(public)/manual/ManualContent";
 import { useWorkspaceSession } from "@/app/hooks/useWorkspaceSession";
@@ -55,7 +57,8 @@ import {
   isCloudAuthConfigured,
   useAuth,
 } from "@/lib/auth-components";
-import { isAppleTouchDevice } from "@/lib/appleTouch";
+import { getTouchLayout } from "@/lib/appleTouch";
+import type { Diagnostic } from "@/compiler/types";
 import { useDictionary, useLocale } from "@/i18n/context";
 import { localePath } from "@/i18n/config";
 import { LocaleSwitcher } from "@/i18n/LocaleSwitcher";
@@ -89,7 +92,6 @@ const MAX_SIDEBAR_WIDTH = 480;
 const DEFAULT_TERMINAL_HEIGHT = 160;
 const MIN_TERMINAL_HEIGHT = 96;
 const MAX_TERMINAL_HEIGHT = 460;
-const TOUCH_TABLET_BREAKPOINT = 744;
 const SIDEBAR_WIDTH_STORAGE_KEY = "pseudocode-compiler-sidebar-width";
 const TERMINAL_HEIGHT_STORAGE_KEY = "pseudocode-compiler-terminal-height";
 const AUTO_SAVE_INTERVAL_STORAGE_KEY = "pseudocode-compiler-autosave-minutes";
@@ -99,6 +101,10 @@ const MIN_AUTO_SAVE_INTERVAL_MINUTES = 1;
 const MAX_AUTO_SAVE_INTERVAL_MINUTES = 60;
 const MANUAL_SAVE_STATUS_TIMEOUT_MS = 2200;
 const PSEUDO_EXTENSION = ".pseudo";
+// Shared so editors without compile results don't get a new array (and reset markers) every render.
+const EMPTY_DIAGNOSTICS: Diagnostic[] = [];
+const DIALOG_CARD_CLASS =
+  "w-[calc(100%-2rem)] border border-[var(--separator)] bg-[var(--surface)] p-6 text-[var(--text)] shadow-[var(--shadow-modal)]";
 
 type TouchTab = "editor" | "files" | "output" | "settings";
 type ManualSaveStatus = "idle" | "saving" | "saved" | "error";
@@ -131,10 +137,12 @@ const MonacoPseudocodeEditor = dynamic(
   },
 );
 
-const FlowchartEditor = dynamic(() => import("@/app/components/flowchart/FlowchartEditor"), {
-  ssr: false,
-  loading: () => <FlowchartLoadingFallback />,
-});
+const FlowchartEditor = memo(
+  dynamic(() => import("@/app/components/flowchart/FlowchartEditor"), {
+    ssr: false,
+    loading: () => <FlowchartLoadingFallback />,
+  }),
+);
 
 /* ── dialog state types ── */
 
@@ -362,18 +370,6 @@ export default function HomePage() {
   const [manualSaveStatus, setManualSaveStatus] = useState<ManualSaveStatus>("idle");
   const manualSaveStatusTimerRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    if (!showFlowchartPrompt && !showCreateFileDialog && !showManualPanel) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        if (showCreateFileDialog) setShowCreateFileDialog(false);
-        if (showFlowchartPrompt) setShowFlowchartPrompt(false);
-        if (showManualPanel) setShowManualPanel(false);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showFlowchartPrompt, showCreateFileDialog, showManualPanel]);
   const [systemTheme, setSystemTheme] = useState<"dark" | "light">(() => getSystemTheme());
 
   const clearManualSaveStatusTimer = useCallback(() => {
@@ -403,8 +399,11 @@ export default function HomePage() {
     width: typeof window === "undefined" ? 1280 : window.innerWidth,
     height: typeof window === "undefined" ? 800 : window.innerHeight,
   }));
-  const [isAppleTouchUi] = useState(() =>
-    isAppleTouchDevice(typeof navigator === "undefined" ? undefined : navigator),
+  const [coarsePointer, setCoarsePointer] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(pointer: coarse)").matches,
   );
   const maxTerminalHeight = getMaxTerminalHeight(viewportSize.height);
 
@@ -458,8 +457,19 @@ export default function HomePage() {
   const resolvedTheme = resolveTheme(themeMode, systemTheme);
   const shouldWarnBeforeUnload = hasPendingSave || saveError !== null;
   const flowchartVisible = flowchartModeEnabled && showFlowchart;
+  const currentSource = currentDocument?.source ?? "";
+  // The flowchart stays mounted while hidden; only feed it source updates while it is visible.
+  const [flowchartSource, setFlowchartSource] = useState(currentSource);
+  if (flowchartVisible && flowchartSource !== currentSource) {
+    setFlowchartSource(currentSource);
+  }
+  const currentDocumentRef = useRef(currentDocument);
 
   /* ── effects ── */
+
+  useEffect(() => {
+    currentDocumentRef.current = currentDocument;
+  }, [currentDocument]);
 
   useEffect(() => {
     if (renameDialog) {
@@ -485,8 +495,17 @@ export default function HomePage() {
       setSystemTheme(event.matches ? "dark" : "light");
     };
 
+    const pointerQuery = window.matchMedia("(pointer: coarse)");
+    const handlePointerChange = (event: MediaQueryListEvent) => {
+      setCoarsePointer(event.matches);
+    };
+
     mediaQuery.addEventListener("change", handleChange);
-    return () => mediaQuery.removeEventListener("change", handleChange);
+    pointerQuery.addEventListener("change", handlePointerChange);
+    return () => {
+      mediaQuery.removeEventListener("change", handleChange);
+      pointerQuery.removeEventListener("change", handlePointerChange);
+    };
   }, []);
 
   useEffect(() => {
@@ -794,9 +813,12 @@ export default function HomePage() {
         revealCodeView?: boolean;
       },
     ) => {
-      if (currentDocument) {
-        if (currentDocument.source !== code) {
-          handleDocumentSourceChange(currentDocument.id, code);
+      // Read the document through a ref so these callbacks stay stable and the memoized
+      // flowchart doesn't re-render or re-run its sync effect on every keystroke.
+      const doc = currentDocumentRef.current;
+      if (doc) {
+        if (doc.source !== code) {
+          handleDocumentSourceChange(doc.id, code);
         }
       } else if (code.trim().length > 0 || options?.createDocumentWhenEmpty) {
         createDocumentInWorkspace(undefined, { source: code });
@@ -806,7 +828,7 @@ export default function HomePage() {
         setShowFlowchart(false);
       }
     },
-    [createDocumentInWorkspace, currentDocument, handleDocumentSourceChange],
+    [createDocumentInWorkspace, handleDocumentSourceChange],
   );
 
   const handleFlowchartCodeChange = useCallback(
@@ -825,8 +847,10 @@ export default function HomePage() {
     },
     [syncFlowchartCodeToWorkspace],
   );
-  const isTouchTablet = isAppleTouchUi && viewportSize.width >= TOUCH_TABLET_BREAKPOINT;
-  const isTouchPhone = isAppleTouchUi && viewportSize.width < TOUCH_TABLET_BREAKPOINT;
+  // Browser-only values; the workspace loading gate renders first, so this can't cause a hydration mismatch.
+  const touchLayout = getTouchLayout(viewportSize.width, coarsePointer);
+  const isTouchTablet = touchLayout === "tablet";
+  const isTouchPhone = touchLayout === "phone";
 
   const handleTouchRun = useCallback(() => {
     if (isTouchTablet) {
@@ -882,7 +906,7 @@ export default function HomePage() {
               aria-pressed={selected}
               className={`relative flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
                 selected
-                  ? "bg-[var(--accent)] text-white shadow-sm"
+                  ? "bg-[var(--accent)] text-[var(--on-accent)] shadow-sm"
                   : "text-[var(--text2)] hover:text-[var(--text)]"
               }`}
             >
@@ -894,7 +918,9 @@ export default function HomePage() {
 
       <p className="text-xs text-[var(--text3)]">
         {t.settings.activeAppearance}{" "}
-        <span className="font-semibold capitalize text-[var(--text2)]">{resolvedTheme}</span>
+        <span className="font-semibold text-[var(--text2)]">
+          {resolvedTheme === "dark" ? t.settings.dark : t.settings.light}
+        </span>
       </p>
     </div>
   );
@@ -927,7 +953,8 @@ export default function HomePage() {
     </div>
   );
 
-  const renderBetaSettings = (compact = false) => (
+  // The flowchart can't render on touch layouts, so its switch is hidden there.
+  const renderBetaSettings = (compact = false) => touchLayout ? null : (
     <div className={compact ? "mt-6 space-y-4" : "space-y-4"}>
       <div>
         <p className="text-[11px] font-semibold tracking-[0.18em] text-[var(--text3)]">
@@ -993,7 +1020,7 @@ export default function HomePage() {
       return (
         <button
           type="button"
-          className={`inline-flex items-center justify-center gap-1 rounded-lg border border-[var(--accent)] bg-[var(--accent)] font-semibold text-white shadow-sm transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
+          className={`inline-flex items-center justify-center gap-1 rounded-lg border border-[var(--accent)] bg-[var(--accent)] font-semibold text-[var(--on-accent)] shadow-sm transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
             compact ? "h-8 w-8 px-0" : "h-8 px-3 text-xs"
           }`}
           onClick={() => {
@@ -1014,7 +1041,7 @@ export default function HomePage() {
           <SignInButton mode="modal">
             <button
               type="button"
-              className={`inline-flex items-center justify-center gap-1 rounded-lg border border-[var(--accent)] bg-[var(--accent)] font-semibold text-white shadow-sm transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
+              className={`inline-flex items-center justify-center gap-1 rounded-lg border border-[var(--accent)] bg-[var(--accent)] font-semibold text-[var(--on-accent)] shadow-sm transition hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
                 compact ? "h-8 w-8 px-0" : "h-8 px-3 text-xs"
               }`}
             >
@@ -1112,191 +1139,342 @@ export default function HomePage() {
     setShowManualPanel(true);
   };
 
+  const closeFlowchartPrompt = () => {
+    setShowFlowchartPrompt(false);
+    setFlowchartFileName("");
+  };
+
   const renderManualDialog = () =>
     showManualPanel ? (
-      <div className="fixed inset-0 z-[var(--z-modal)] flex bg-[var(--overlay-strong)] p-0 md:p-5">
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="workspace-manual-title"
-          className="mx-auto h-full w-full max-w-6xl overflow-auto bg-[#f7f8f3] shadow-[var(--shadow-modal)] md:rounded-[24px] md:border md:border-[#d7ddd0]"
-        >
-          <h2 id="workspace-manual-title" className="sr-only">
-            {t.manual.title}
-          </h2>
-          <ManualContent isModal onClose={() => setShowManualPanel(false)} />
-        </div>
-      </div>
+      <Dialog
+        labelledBy="workspace-manual-title"
+        onClose={() => setShowManualPanel(false)}
+        className="h-full max-h-none w-full max-w-6xl overflow-auto border-0 bg-[#f7f8f3] p-0 shadow-[var(--shadow-modal)] md:h-[calc(100%-2.5rem)] md:w-[calc(100%-2.5rem)] md:rounded-[24px] md:border md:border-[#d7ddd0]"
+      >
+        <h2 id="workspace-manual-title" className="sr-only">
+          {t.manual.title}
+        </h2>
+        <ManualContent isModal onClose={() => setShowManualPanel(false)} />
+      </Dialog>
     ) : null;
 
   const renderFlowchartPromptDialog = () =>
     showFlowchartPrompt ? (
-      <div className="fixed inset-0 z-[var(--z-tooltip)] flex items-center justify-center bg-[var(--overlay)] p-4">
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="flowchart-prompt-title"
-          className="w-full max-w-sm rounded-xl border border-[var(--separator)] bg-[var(--surface)] p-6 shadow-[var(--shadow-modal)]"
-        >
-          <div className="flex items-center gap-3 text-[var(--text3)]">
-            <GitBranch size={20} />
-            <span className="text-xs font-semibold uppercase tracking-[0.16em]">{t.flowchart.name}</span>
-          </div>
-          <h2
-            id="flowchart-prompt-title"
-            className="mt-3 text-xl font-semibold text-[var(--text)]"
-          >
-            {t.flowchart.createFirst}
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-[var(--text2)]">
-            {t.flowchart.createFirstDescription}
-          </p>
-          <form
-            className="mt-5 space-y-4"
-            onSubmit={(event) => {
-              event.preventDefault();
-              const name = flowchartFileName.trim();
-              if (!name) return;
-              createDocumentInWorkspace(undefined, { name });
-              setShowFlowchartPrompt(false);
-              setFlowchartFileName("");
-              setShowFlowchart(true);
-            }}
-          >
-            <label className="block">
-              <span className="mb-2 block text-sm text-[var(--text2)]">{t.files.fileName}</span>
-              <input
-                autoFocus
-                aria-label={t.files.fileName}
-                value={flowchartFileName}
-                onChange={(event) => setFlowchartFileName(event.target.value)}
-                placeholder="main.pseudo"
-                className="h-10 w-full rounded-xl border border-[var(--separator)] bg-[var(--bg)] px-3 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
-              />
-            </label>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
-                onClick={() => {
-                  setShowFlowchartPrompt(false);
-                  setFlowchartFileName("");
-                }}
-              >
-                {t.common.cancel}
-              </button>
-              <button
-                type="submit"
-                className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
-                disabled={!flowchartFileName.trim()}
-              >
-                {t.files.createAndOpen}
-              </button>
-            </div>
-          </form>
+      <Dialog
+        labelledBy="flowchart-prompt-title"
+        onClose={closeFlowchartPrompt}
+        className={`${DIALOG_CARD_CLASS} max-w-sm rounded-xl`}
+      >
+        <div className="flex items-center gap-3 text-[var(--text3)]">
+          <GitBranch size={20} />
+          <span className="text-xs font-semibold uppercase tracking-[0.16em]">{t.flowchart.name}</span>
         </div>
-      </div>
+        <h2
+          id="flowchart-prompt-title"
+          className="mt-3 text-xl font-semibold text-[var(--text)]"
+        >
+          {t.flowchart.createFirst}
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-[var(--text2)]">
+          {t.flowchart.createFirstDescription}
+        </p>
+        <form
+          className="mt-5 space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const name = flowchartFileName.trim();
+            if (!name) return;
+            createDocumentInWorkspace(undefined, { name });
+            closeFlowchartPrompt();
+            setShowFlowchart(true);
+          }}
+        >
+          <label className="block">
+            <span className="mb-2 block text-sm text-[var(--text2)]">{t.files.fileName}</span>
+            <input
+              data-autofocus
+              aria-label={t.files.fileName}
+              value={flowchartFileName}
+              onChange={(event) => setFlowchartFileName(event.target.value)}
+              placeholder="main.pseudo"
+              className="h-10 w-full rounded-xl border border-[var(--separator)] bg-[var(--bg)] px-3 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
+            />
+          </label>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
+              onClick={closeFlowchartPrompt}
+            >
+              {t.common.cancel}
+            </button>
+            <button
+              type="submit"
+              className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-[var(--on-accent)] disabled:opacity-50"
+              disabled={!flowchartFileName.trim()}
+            >
+              {t.files.createAndOpen}
+            </button>
+          </div>
+        </form>
+      </Dialog>
     ) : null;
 
   const renderCreateFileDialog = () =>
     showCreateFileDialog ? (
-      <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-[var(--overlay-strong)] p-4">
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="create-file-dialog-title"
-          className="w-full max-w-sm rounded-xl border border-[var(--separator)] bg-[var(--surface)] p-6 shadow-[var(--shadow-modal)]"
-        >
-          <div className="flex items-center gap-3 text-[var(--text3)]">
-            <FilePlus size={20} />
-            <span className="text-xs font-semibold uppercase tracking-[0.16em]">{t.files.explorer}</span>
-          </div>
-          <h2
-            id="create-file-dialog-title"
-            className="mt-3 text-xl font-semibold text-[var(--text)]"
-          >
-            {t.files.createNewFile}
-          </h2>
-          <form className="mt-5 space-y-4" onSubmit={submitCreateFile}>
-            <label className="block">
-              <span className="mb-2 block text-sm text-[var(--text2)]">{t.files.fileName}</span>
-              <div className="flex h-10 w-full overflow-hidden rounded-xl border border-[var(--separator)] bg-[var(--bg)] focus-within:border-[var(--accent)]">
-                <input
-                  ref={createFileInputRef}
-                  aria-label={t.files.fileName}
-                  value={createFileName}
-                  onChange={(event) => setCreateFileName(normalizeDocumentEditableName(event.target.value))}
-                  placeholder="main"
-                  className="min-w-0 flex-1 border-0 bg-transparent px-3 text-sm text-[var(--text)] outline-none"
-                />
-                <span className="flex shrink-0 items-center border-l border-[var(--separator)] bg-[var(--surface2)] px-3 text-sm text-[var(--text3)]">
-                  {PSEUDO_EXTENSION}
-                </span>
-              </div>
-            </label>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
-                onClick={closeCreateFileDialog}
-              >
-                {t.common.cancel}
-              </button>
-              <button
-                type="submit"
-                className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
-                disabled={!createFileName.trim()}
-              >
-                {t.files.createFile}
-              </button>
-            </div>
-          </form>
+      <Dialog
+        labelledBy="create-file-dialog-title"
+        onClose={closeCreateFileDialog}
+        className={`${DIALOG_CARD_CLASS} max-w-sm rounded-xl`}
+      >
+        <div className="flex items-center gap-3 text-[var(--text3)]">
+          <FilePlus size={20} />
+          <span className="text-xs font-semibold uppercase tracking-[0.16em]">{t.files.explorer}</span>
         </div>
-      </div>
+        <h2
+          id="create-file-dialog-title"
+          className="mt-3 text-xl font-semibold text-[var(--text)]"
+        >
+          {t.files.createNewFile}
+        </h2>
+        <form className="mt-5 space-y-4" onSubmit={submitCreateFile}>
+          <label className="block">
+            <span className="mb-2 block text-sm text-[var(--text2)]">{t.files.fileName}</span>
+            <div className="flex h-10 w-full overflow-hidden rounded-xl border border-[var(--separator)] bg-[var(--bg)] focus-within:border-[var(--accent)]">
+              <input
+                ref={createFileInputRef}
+                data-autofocus
+                aria-label={t.files.fileName}
+                value={createFileName}
+                onChange={(event) => setCreateFileName(normalizeDocumentEditableName(event.target.value))}
+                placeholder="main"
+                className="min-w-0 flex-1 border-0 bg-transparent px-3 text-sm text-[var(--text)] outline-none"
+              />
+              <span className="flex shrink-0 items-center border-l border-[var(--separator)] bg-[var(--surface2)] px-3 text-sm text-[var(--text3)]">
+                {PSEUDO_EXTENSION}
+              </span>
+            </div>
+          </label>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
+              onClick={closeCreateFileDialog}
+            >
+              {t.common.cancel}
+            </button>
+            <button
+              type="submit"
+              className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-[var(--on-accent)] disabled:opacity-50"
+              disabled={!createFileName.trim()}
+            >
+              {t.files.createFile}
+            </button>
+          </div>
+        </form>
+      </Dialog>
     ) : null;
 
   const renderSignInPromptDialog = () =>
     showSignInPrompt ? (
-      <div className="fixed inset-0 z-[var(--z-tooltip)] flex items-center justify-center bg-[var(--overlay)] p-4">
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="sign-in-save-dialog-title"
-          className="w-full max-w-sm rounded-xl border border-[var(--separator)] bg-[var(--surface)] p-5 shadow-[var(--shadow-modal)]"
+      <Dialog
+        labelledBy="sign-in-save-dialog-title"
+        onClose={() => setShowSignInPrompt(false)}
+        className={`${DIALOG_CARD_CLASS} max-w-sm rounded-xl`}
+      >
+        <div className="flex items-center gap-2 text-[var(--text3)]">
+          <CloudOff size={18} />
+          <span className="text-xs font-semibold uppercase tracking-[0.16em]">{t.auth.signedOut}</span>
+        </div>
+        <h2
+          id="sign-in-save-dialog-title"
+          className="mt-3 text-xl font-semibold text-[var(--text)]"
         >
-          <div className="flex items-center gap-2 text-[var(--text3)]">
-            <CloudOff size={18} />
-            <span className="text-xs font-semibold uppercase tracking-[0.16em]">{t.auth.signedOut}</span>
-          </div>
-          <h2
-            id="sign-in-save-dialog-title"
-            className="mt-3 text-xl font-semibold text-[var(--text)]"
+          {t.auth.signInToSave}
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-[var(--text2)]">
+          {t.auth.signInDescription}
+        </p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] transition hover:bg-[var(--surface3)]"
+            onClick={() => setShowSignInPrompt(false)}
           >
-            {t.auth.signInToSave}
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-[var(--text2)]">
-            {t.auth.signInDescription}
-          </p>
-          <div className="mt-5 flex justify-end gap-2">
+            {t.auth.notNow}
+          </button>
+          <SignInButton mode="modal">
+            {/* Close this modal first: Clerk's sign-in modal would otherwise sit under the inert page. */}
             <button
               type="button"
-              className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] transition hover:bg-[var(--surface3)]"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm font-semibold text-[var(--text2)] transition hover:bg-[var(--surface3)] hover:text-[var(--text)]"
               onClick={() => setShowSignInPrompt(false)}
             >
-              {t.auth.notNow}
+              <LogIn size={15} />
+              {t.auth.logIn}
             </button>
-            <SignInButton mode="modal">
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm font-semibold text-[var(--text2)] transition hover:bg-[var(--surface3)] hover:text-[var(--text)]"
+          </SignInButton>
+        </div>
+      </Dialog>
+    ) : null;
+
+  const renderRenameDialog = () =>
+    renameDialog ? (
+      <Dialog
+        labelledBy="rename-dialog-title"
+        onClose={() => setRenameDialog(null)}
+        className={`${DIALOG_CARD_CLASS} max-w-md rounded-xl`}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.2em] text-[var(--accent)]">{t.files.explorer}</p>
+            <h2
+              id="rename-dialog-title"
+              className="mt-2 text-xl font-semibold text-[var(--text)]"
+            >
+              {t.files.renameItem}
+            </h2>
+            <p className="mt-2 text-sm text-[var(--text2)]">
+              {t.files.currentName} {renameDialog.currentName}
+            </p>
+          </div>
+          <button
+            type="button"
+            className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
+            onClick={() => setRenameDialog(null)}
+          >
+            {t.common.cancel}
+          </button>
+        </div>
+        <form className="mt-5 space-y-4" onSubmit={submitRename}>
+          <label className="block">
+            <span className="mb-2 block text-sm text-[var(--text2)]">{t.files.itemName}</span>
+            <div className="flex h-10 w-full overflow-hidden rounded-xl border border-[var(--separator)] bg-[var(--bg)] focus-within:border-[var(--accent)]">
+              <input
+                ref={renameInputRef}
+                data-autofocus
+                aria-label={t.files.itemName}
+                value={renameValue}
+                onChange={(event) =>
+                  setRenameValue(
+                    renameDialog.isDocument
+                      ? normalizeDocumentEditableName(event.target.value)
+                      : event.target.value,
+                  )
+                }
+                className="min-w-0 flex-1 border-0 bg-transparent px-3 text-sm text-[var(--text)] outline-none"
+              />
+              {renameDialog.isDocument ? (
+                <span className="flex shrink-0 items-center border-l border-[var(--separator)] bg-[var(--surface2)] px-3 text-sm text-[var(--text3)]">
+                  {PSEUDO_EXTENSION}
+                </span>
+              ) : null}
+            </div>
+          </label>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
+              onClick={() => setRenameDialog(null)}
+            >
+              {t.common.cancel}
+            </button>
+            <button
+              type="submit"
+              className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-[var(--on-accent)] disabled:opacity-50"
+              disabled={!renameValue.trim()}
+            >
+              {t.files.saveName}
+            </button>
+          </div>
+        </form>
+      </Dialog>
+    ) : null;
+
+  const renderDeleteDialog = () =>
+    deleteDialog ? (
+      <Dialog
+        labelledBy="delete-dialog-title"
+        onClose={() => setDeleteDialog(null)}
+        className={`${DIALOG_CARD_CLASS} max-w-md rounded-xl`}
+      >
+        <p className="text-xs uppercase tracking-[0.2em] text-[var(--red)]">{t.files.explorer}</p>
+        <h2
+          id="delete-dialog-title"
+          className="mt-2 text-xl font-semibold text-[var(--text)]"
+        >
+          {t.files.confirmDelete}
+        </h2>
+        <p className="mt-3 text-sm text-[var(--text2)]">{deleteDialog.message}</p>
+        <div className="mt-6 flex justify-end gap-2">
+          <button
+            type="button"
+            className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
+            onClick={() => setDeleteDialog(null)}
+          >
+            {t.common.cancel}
+          </button>
+          <button
+            type="button"
+            className="rounded-lg bg-[var(--red)] px-3 py-1.5 text-sm font-semibold text-[var(--on-red)]"
+            onClick={confirmDelete}
+          >
+            {t.common.delete}
+          </button>
+        </div>
+      </Dialog>
+    ) : null;
+
+  const renderSettingsDialog = () =>
+    showSettingsPanel ? (
+      <Dialog
+        labelledBy="settings-dialog-title"
+        onClose={() => setShowSettingsPanel(false)}
+        className={`${DIALOG_CARD_CLASS} max-w-lg rounded-[var(--radius-3xl)]`}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.2em] text-[var(--accent)]">{t.toolbar.settings}</p>
+            <h2
+              id="settings-dialog-title"
+              className="mt-2 text-2xl font-semibold text-[var(--text)]"
+            >
+              {t.toolbar.settings}
+            </h2>
+          </div>
+          <button
+            type="button"
+            className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
+            onClick={() => setShowSettingsPanel(false)}
+          >
+            {t.common.close}
+          </button>
+        </div>
+        <div className="mt-5 space-y-6">
+          {renderThemeSettings()}
+          {renderSaveSettings()}
+          {renderBetaSettings()}
+        </div>
+        <div className="mt-6 border-t border-[var(--separator)] pt-4 text-center">
+          <p className="text-xs text-[var(--text3)]">
+            {t.legal.notice(new Date().getFullYear())}
+          </p>
+          <div className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs">
+            {appLegalLinks.map((link) => (
+              <a
+                key={link.href}
+                href={link.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[var(--accent)] hover:underline"
               >
-                <LogIn size={15} />
-                {t.auth.logIn}
-              </button>
-            </SignInButton>
+                {link.label}
+              </a>
+            ))}
+            <LocaleSwitcher />
           </div>
         </div>
-      </div>
+      </Dialog>
     ) : null;
 
   const renderStarterPanel = (compact = false) => (
@@ -1325,7 +1503,7 @@ export default function HomePage() {
           <div className="mt-7 flex w-full flex-col gap-2.5">
             <button
               type="button"
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-5 text-sm font-semibold text-white transition hover:brightness-110"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-[var(--accent)] px-5 text-sm font-semibold text-[var(--on-accent)] transition hover:brightness-110"
                   onClick={() => openCreateFileDialog()}
             >
               <FilePlus size={16} />
@@ -1373,6 +1551,9 @@ export default function HomePage() {
       <div
         ref={touchOutputScrollRef}
         data-testid="touch-output-scroll-region"
+        role="log"
+        aria-live="polite"
+        aria-label={title}
         tabIndex={0}
         onScroll={handleOutputScroll}
         className="min-h-0 flex-1 overflow-auto overscroll-contain px-4 py-2 touch-pan-y"
@@ -1395,18 +1576,21 @@ export default function HomePage() {
           }}
         >
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-xs text-[var(--green)]">{pendingInput.prompt}</span>
+            <span id="terminal-input-prompt" className="font-mono text-xs text-[var(--green)]">
+              {pendingInput.prompt}
+            </span>
             <input
               value={pendingInput.text}
               onChange={(event) => setPendingInputText(event.target.value)}
               autoFocus
               aria-label={t.terminal.input}
+              aria-describedby="terminal-input-prompt"
               className="h-8 min-w-[140px] flex-1 rounded-lg border border-[var(--separator)] bg-[var(--bg)] px-2 font-mono text-xs text-[var(--text)] outline-none focus:border-[var(--accent)]"
               placeholder={t.terminal.inputPlaceholder}
             />
             <button
               type="submit"
-              className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-[11px] font-semibold text-white"
+              className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-[11px] font-semibold text-[var(--on-accent)]"
             >
               {t.terminal.send}
             </button>
@@ -1433,30 +1617,33 @@ export default function HomePage() {
 
   /* ── dialog handlers ── */
 
-  const openRenameDialog = (nodeId: string, currentName: string, isDocument: boolean) => {
-    setRenameDialog({ nodeId, currentName, isDocument });
-    setRenameValue(isDocument ? getDocumentEditableName(currentName) : currentName);
-  };
+  // Sidebar callbacks are memoized so the memoized sidebar skips page renders that don't change the workspace.
+  const handleRenameNode = useCallback(
+    (nodeId: string) => {
+      const node = workspace?.nodes[nodeId];
+      if (!node) return;
+      const isDocument = node.type === "document";
+      setRenameDialog({ nodeId: node.id, currentName: node.name, isDocument });
+      setRenameValue(isDocument ? getDocumentEditableName(node.name) : node.name);
+    },
+    [workspace],
+  );
 
-  const handleRenameNode = (nodeId: string) => {
-    if (!workspace) return;
-    const node = workspace.nodes[nodeId];
-    if (!node) return;
-    openRenameDialog(node.id, node.name, node.type === "document");
-  };
-
-  const handleDeleteNodes = (nodeIds: string[]) => {
-    if (!workspace) return;
-    const ids = Array.from(new Set(nodeIds)).filter((id) => !!workspace.nodes[id]);
-    if (ids.length === 0) return;
-    setDeleteDialog({
-      nodeIds: ids,
-      message:
-        ids.length === 1
-          ? t.files.deleteOne(workspace.nodes[ids[0]].name)
-          : t.files.deleteMany(ids.length),
-    });
-  };
+  const handleDeleteNodes = useCallback(
+    (nodeIds: string[]) => {
+      if (!workspace) return;
+      const ids = Array.from(new Set(nodeIds)).filter((id) => !!workspace.nodes[id]);
+      if (ids.length === 0) return;
+      setDeleteDialog({
+        nodeIds: ids,
+        message:
+          ids.length === 1
+            ? t.files.deleteOne(workspace.nodes[ids[0]].name)
+            : t.files.deleteMany(ids.length),
+      });
+    },
+    [t, workspace],
+  );
 
   const openCreateFileDialog = (options?: { parentId?: string; initialName?: string }) => {
     setCreateFileParentId(options?.parentId);
@@ -1464,9 +1651,11 @@ export default function HomePage() {
     setShowCreateFileDialog(true);
   };
 
-  const handleCreateDocumentFromSidebar = (parentId?: string) => {
-    openCreateFileDialog({ parentId, initialName: "Untitled.pseudo" });
-  };
+  const handleCreateDocumentFromSidebar = useCallback((parentId?: string) => {
+    setCreateFileParentId(parentId);
+    setCreateFileName(getDocumentEditableName("Untitled.pseudo"));
+    setShowCreateFileDialog(true);
+  }, []);
 
   const closeCreateFileDialog = () => {
     setShowCreateFileDialog(false);
@@ -1541,7 +1730,7 @@ export default function HomePage() {
 
   /* ── render ── */
 
-  if (isAppleTouchUi) {
+  if (touchLayout) {
     const phoneTabItems = [
       { key: "editor" as const, label: t.touchTabs.editor, icon: Code },
       { key: "files" as const, label: t.touchTabs.files, icon: Folder },
@@ -1616,14 +1805,14 @@ export default function HomePage() {
                   </button>
                   <button
                     type="button"
-                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--green)] text-white transition hover:brightness-110 disabled:opacity-50"
+                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--green)] text-[var(--on-green)] transition hover:brightness-110 disabled:opacity-50"
                     aria-label={isRunning ? t.toolbar.running : t.toolbar.run}
                     onPointerEnter={preloadRunRuntime}
                     onFocus={preloadRunRuntime}
                     onClick={handleTouchRun}
                     disabled={isRunning || !currentDocument}
                   >
-                    <Play size={22} fill="white" />
+                    <Play size={22} fill="currentColor" />
                   </button>
                   {renderAccountControl(true)}
                 </div>
@@ -1677,7 +1866,7 @@ export default function HomePage() {
                         value={currentDocument.source}
                         onChange={(value) => handleDocumentSourceChange(currentDocument.id, value)}
                         diagnostics={
-                          activeDocument?.id === currentDocument.id ? compileDiagnostics : []
+                          activeDocument?.id === currentDocument.id ? compileDiagnostics : EMPTY_DIAGNOSTICS
                         }
                         theme={resolvedTheme}
                       />
@@ -1754,14 +1943,14 @@ export default function HomePage() {
           </button>
                 <button
                   type="button"
-                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--green)] text-white transition hover:brightness-110 disabled:opacity-50"
+                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--green)] text-[var(--on-green)] transition hover:brightness-110 disabled:opacity-50"
                   aria-label={isRunning ? t.toolbar.running : t.toolbar.run}
                   onPointerEnter={preloadRunRuntime}
                   onFocus={preloadRunRuntime}
                   onClick={handleTouchRun}
                   disabled={isRunning || !currentDocument}
                 >
-                  <Play size={22} fill="white" />
+                  <Play size={22} fill="currentColor" />
                 </button>
                 {renderAccountControl(true)}
               </header>
@@ -1777,7 +1966,7 @@ export default function HomePage() {
                         value={currentDocument.source}
                         onChange={(value) => handleDocumentSourceChange(currentDocument.id, value)}
                         diagnostics={
-                          activeDocument?.id === currentDocument.id ? compileDiagnostics : []
+                          activeDocument?.id === currentDocument.id ? compileDiagnostics : EMPTY_DIAGNOSTICS
                         }
                         theme={resolvedTheme}
                       />
@@ -1818,7 +2007,7 @@ export default function HomePage() {
                       {renderBetaSettings(true)}
                       <button
                         type="button"
-                        className="mt-6 inline-flex h-10 items-center justify-center self-start rounded-2xl bg-[var(--accent)] px-5 text-sm font-semibold text-white transition hover:brightness-110"
+                        className="mt-6 inline-flex h-10 items-center justify-center self-start rounded-2xl bg-[var(--accent)] px-5 text-sm font-semibold text-[var(--on-accent)] transition hover:brightness-110"
                         onClick={openManualPage}
                       >
                         {t.toolbar.openManual}
@@ -1841,7 +2030,7 @@ export default function HomePage() {
                           type="button"
                           className={`flex h-full flex-1 flex-col items-center justify-center gap-[3px] rounded-[var(--radius-2xl)] transition ${
                             isActive
-                              ? "bg-[var(--accent)] text-white"
+                              ? "bg-[var(--accent)] text-[var(--on-accent)]"
                               : "text-[var(--text3)]"
                           }`}
                           aria-label={tab.label}
@@ -1860,170 +2049,9 @@ export default function HomePage() {
             </>
           )}
 
-          {renameDialog && (
-            <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-[var(--overlay-strong)] p-4">
-              <div
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="rename-dialog-title"
-                className="w-full max-w-md rounded-xl border border-[var(--separator)] bg-[var(--surface)] p-6"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-[var(--accent)]">{t.files.explorer}</p>
-                    <h2
-                      id="rename-dialog-title"
-                      className="mt-2 text-xl font-semibold text-[var(--text)]"
-                    >
-                      {t.files.renameItem}
-                    </h2>
-                    <p className="mt-2 text-sm text-[var(--text2)]">
-                      {t.files.currentName} {renameDialog.currentName}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
-                    onClick={() => setRenameDialog(null)}
-                  >
-                    {t.common.cancel}
-                  </button>
-                </div>
-                <form className="mt-5 space-y-4" onSubmit={submitRename}>
-                  <label className="block">
-                    <span className="mb-2 block text-sm text-[var(--text2)]">{t.files.itemName}</span>
-                    <div className="flex h-10 w-full overflow-hidden rounded-xl border border-[var(--separator)] bg-[var(--bg)] focus-within:border-[var(--accent)]">
-                      <input
-                        ref={renameInputRef}
-                        aria-label={t.files.itemName}
-                        value={renameValue}
-                        onChange={(event) =>
-                          setRenameValue(
-                            renameDialog.isDocument
-                              ? normalizeDocumentEditableName(event.target.value)
-                              : event.target.value,
-                          )
-                        }
-                        className="min-w-0 flex-1 border-0 bg-transparent px-3 text-sm text-[var(--text)] outline-none"
-                      />
-                      {renameDialog.isDocument ? (
-                        <span className="flex shrink-0 items-center border-l border-[var(--separator)] bg-[var(--surface2)] px-3 text-sm text-[var(--text3)]">
-                          {PSEUDO_EXTENSION}
-                        </span>
-                      ) : null}
-                    </div>
-                  </label>
-                  <div className="flex justify-end gap-2">
-                    <button
-                      type="button"
-                      className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
-                      onClick={() => setRenameDialog(null)}
-                    >
-                      {t.common.cancel}
-                    </button>
-                    <button
-                      type="submit"
-                      className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
-                      disabled={!renameValue.trim()}
-                    >
-                      {t.files.saveName}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
-
-          {deleteDialog && (
-            <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-[var(--overlay-strong)] p-4">
-              <div
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="delete-dialog-title"
-                className="w-full max-w-md rounded-xl border border-[var(--separator)] bg-[var(--surface)] p-6"
-              >
-                <p className="text-xs uppercase tracking-[0.2em] text-[var(--red)]">{t.files.explorer}</p>
-                <h2
-                  id="delete-dialog-title"
-                  className="mt-2 text-xl font-semibold text-[var(--text)]"
-                >
-                  {t.files.confirmDelete}
-                </h2>
-                <p className="mt-3 text-sm text-[var(--text2)]">{deleteDialog.message}</p>
-                <div className="mt-6 flex justify-end gap-2">
-                  <button
-                    type="button"
-                    className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
-                    onClick={() => setDeleteDialog(null)}
-                  >
-                    {t.common.cancel}
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-lg bg-[var(--red)] px-3 py-1.5 text-sm font-semibold text-white"
-                    onClick={confirmDelete}
-                  >
-                    {t.common.delete}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {showSettingsPanel && (
-            <div className="fixed inset-0 z-[var(--z-overlay)] flex items-center justify-center bg-[var(--overlay)] p-4">
-              <div
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="touch-settings-dialog-title"
-                className="w-full max-w-lg rounded-[var(--radius-3xl)] border border-[var(--separator)] bg-[var(--surface)] p-6 shadow-[var(--shadow-modal)]"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-[var(--accent)]">{t.toolbar.settings}</p>
-                    <h2
-                      id="touch-settings-dialog-title"
-                      className="mt-2 text-2xl font-semibold text-[var(--text)]"
-                    >
-                      {t.toolbar.settings}
-                    </h2>
-                  </div>
-                  <button
-                    type="button"
-                    className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
-                    onClick={() => setShowSettingsPanel(false)}
-                  >
-                    {t.common.close}
-                  </button>
-                </div>
-                <div className="mt-5 space-y-6">
-                  {renderThemeSettings()}
-                  {renderSaveSettings()}
-                  {renderBetaSettings()}
-                </div>
-                <div className="mt-6 border-t border-[var(--separator)] pt-4 text-center">
-                  <p className="text-xs text-[var(--text3)]">
-                    {t.legal.notice(new Date().getFullYear())}
-                  </p>
-                  <div className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs">
-                    {appLegalLinks.map((link) => (
-                      <a
-                        key={link.href}
-                        href={link.href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[var(--accent)] hover:underline"
-                      >
-                        {link.label}
-                      </a>
-                    ))}
-                    <LocaleSwitcher />
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
+          {renderRenameDialog()}
+          {renderDeleteDialog()}
+          {renderSettingsDialog()}
           {renderSignInPromptDialog()}
           {renderCreateFileDialog()}
           {renderFlowchartPromptDialog()}
@@ -2077,7 +2105,7 @@ export default function HomePage() {
               type="button"
               className={`flex h-7 w-7 items-center justify-center rounded-lg transition ${
                 flowchartVisible
-                  ? "bg-[var(--accent)] text-white"
+                  ? "bg-[var(--accent)] text-[var(--on-accent)]"
                   : "text-[var(--text3)] hover:text-[var(--text2)]"
               }`}
               aria-label={flowchartVisible ? t.toolbar.switchToCode : t.toolbar.switchToFlowchart}
@@ -2087,26 +2115,25 @@ export default function HomePage() {
               <GitBranch size={18} />
             </button>
           ) : null}
-          {!isSignedIn ? (
-            <button
-              type="button"
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text3)] transition hover:text-[var(--text2)]"
-              aria-label={t.toolbar.settings}
-              onClick={() => setShowSettingsPanel(true)}
-            >
-              <Settings size={18} />
-            </button>
-          ) : null}
           <button
             type="button"
-            className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--green)] text-white transition hover:brightness-110 disabled:opacity-50"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text3)] transition hover:text-[var(--text2)]"
+            aria-label={t.toolbar.openSettings}
+            title={t.toolbar.settings}
+            onClick={() => setShowSettingsPanel(true)}
+          >
+            <Settings size={18} />
+          </button>
+          <button
+            type="button"
+            className="flex h-7 w-7 items-center justify-center rounded-lg bg-[var(--green)] text-[var(--on-green)] transition hover:brightness-110 disabled:opacity-50"
             aria-label={isRunning ? t.toolbar.running : t.toolbar.run}
             onPointerEnter={preloadRunRuntime}
             onFocus={preloadRunRuntime}
             onClick={handleRun}
             disabled={isRunning || !currentDocument}
           >
-            <Play size={18} fill="white" />
+            <Play size={18} fill="currentColor" />
           </button>
           {renderAccountControl()}
         </div>
@@ -2177,13 +2204,15 @@ export default function HomePage() {
           <div className="relative min-h-0 flex-1 overflow-hidden">
             {flowchartModeEnabled ? (
               <div
-                aria-hidden={!flowchartVisible}
+                inert={!flowchartVisible}
                 className={`absolute inset-0 z-20 min-h-0 min-w-0 transition-transform duration-500 ease-in-out ${
                   flowchartVisible ? "translate-x-0" : "translate-x-full pointer-events-none"
                 }`}
               >
                 <FlowchartEditor
-                  source={currentDocument?.source ?? ""}
+                  source={flowchartSource}
+                  // isVisible comes from the flowchart branch; spread until both branches merge, then pass it directly.
+                  isVisible={flowchartVisible}
                   onCodeChange={handleFlowchartCodeChange}
                   onGenerateCode={handleGenerateCode}
                 />
@@ -2192,14 +2221,18 @@ export default function HomePage() {
 
             {/* Code View */}
             <div
-              aria-hidden={flowchartVisible}
+              inert={flowchartVisible}
               className={`absolute inset-0 flex min-h-0 min-w-0 flex-col transition-transform duration-500 ease-in-out ${
                 flowchartVisible ? "-translate-x-full pointer-events-none" : "translate-x-0"
               }`}
             >
               {/* Tab Bar */}
               {editorPanel && (
-                <div className="flex h-[38px] shrink-0 items-center gap-0.5 overflow-x-auto px-2">
+                <div
+                  role="tablist"
+                  aria-label={t.toolbar.editor}
+                  className="flex h-[38px] shrink-0 items-center gap-0.5 overflow-x-auto px-2"
+                >
                   {editorPanel.openDocumentIds.map((documentId, index) => {
                     const doc = workspace.nodes[documentId];
                     if (!doc || doc.type !== "document") return null;
@@ -2208,12 +2241,12 @@ export default function HomePage() {
                       <div
                         key={documentId}
                         draggable
-                        className={`group flex h-[30px] shrink-0 items-center gap-1.5 rounded-lg px-3 text-[12px] font-medium transition ${
+                        role="presentation"
+                        className={`group flex h-[30px] shrink-0 items-center gap-1.5 rounded-lg pr-2 text-[12px] font-medium transition ${
                           isActive
                             ? "bg-[var(--surface2)] text-[var(--text)]"
                             : "text-[var(--text3)] hover:bg-[var(--hover)] hover:text-[var(--text2)]"
                         }`}
-                        onClick={() => setEditorActiveDocument(editorPanel.id, documentId)}
                         onDragStart={(event) => {
                           event.dataTransfer.effectAllowed = "move";
                           event.dataTransfer.setData(
@@ -2225,14 +2258,22 @@ export default function HomePage() {
                         onDragOver={(event) => event.preventDefault()}
                         onDrop={(event) => handleTabDrop(event, index)}
                       >
-                        <FileCode
-                          size={14}
-                          className={isActive ? "text-[var(--accent)]" : "text-[var(--text3)]"}
-                        />
-                        <span className="truncate">{doc.name}</span>
                         <button
                           type="button"
-                          className="rounded-lg p-0.5 text-[var(--text3)] opacity-0 hover:bg-[var(--hover)] hover:text-[var(--text)] group-hover:opacity-100"
+                          role="tab"
+                          aria-selected={isActive}
+                          className="flex h-full min-w-0 items-center gap-1.5 rounded-lg pl-3 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--accent)]"
+                          onClick={() => setEditorActiveDocument(editorPanel.id, documentId)}
+                        >
+                          <FileCode
+                            size={14}
+                            className={isActive ? "text-[var(--accent)]" : "text-[var(--text3)]"}
+                          />
+                          <span className="truncate">{doc.name}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-lg p-0.5 text-[var(--text3)] opacity-0 hover:bg-[var(--hover)] hover:text-[var(--text)] focus-visible:opacity-100 group-hover:opacity-100"
                           aria-label={t.files.closeDocument(doc.name)}
                           onClick={(event) => {
                             event.stopPropagation();
@@ -2269,7 +2310,7 @@ export default function HomePage() {
                     value={editorActiveDoc.source}
                     onChange={(value) => handleDocumentSourceChange(editorActiveDoc.id, value)}
                     diagnostics={
-                      activeDocument?.id === editorActiveDoc.id ? compileDiagnostics : []
+                      activeDocument?.id === editorActiveDoc.id ? compileDiagnostics : EMPTY_DIAGNOSTICS
                     }
                     theme={resolvedTheme}
                   />
@@ -2327,6 +2368,9 @@ export default function HomePage() {
               <div
                 ref={desktopTerminalScrollRef}
                 data-testid="terminal-scroll-region"
+                role="log"
+                aria-live="polite"
+                aria-label={t.terminal.terminal}
                 tabIndex={0}
                 onScroll={handleOutputScroll}
                 className="min-h-0 flex-1 overflow-auto overscroll-contain px-3 py-2 touch-pan-y"
@@ -2353,7 +2397,7 @@ export default function HomePage() {
                   }}
                 >
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs text-[var(--green)]">
+                    <span id="terminal-input-prompt" className="font-mono text-xs text-[var(--green)]">
                       {pendingInput.prompt}
                     </span>
                     <input
@@ -2361,12 +2405,13 @@ export default function HomePage() {
                       onChange={(event) => setPendingInputText(event.target.value)}
                       autoFocus
                       aria-label={t.terminal.input}
+                      aria-describedby="terminal-input-prompt"
                       className="h-7 flex-1 rounded-lg border border-[var(--separator)] bg-[var(--bg)] px-2 font-mono text-xs text-[var(--text)] outline-none focus:border-[var(--accent)]"
                       placeholder={t.terminal.inputPlaceholder}
                     />
                     <button
                       type="submit"
-                      className="rounded-lg bg-[var(--accent)] px-2.5 py-1 text-[11px] font-medium text-white"
+                      className="rounded-lg bg-[var(--accent)] px-2.5 py-1 text-[11px] font-medium text-[var(--on-accent)]"
                     >
                       {t.terminal.send}
                     </button>
@@ -2394,172 +2439,9 @@ export default function HomePage() {
         </div>
       </div>
 
-      {showSettingsPanel && (
-        <div className="fixed inset-0 z-[var(--z-overlay)] flex items-center justify-center bg-[var(--overlay)] p-4">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="settings-dialog-title"
-            className="w-full max-w-lg rounded-[var(--radius-3xl)] border border-[var(--separator)] bg-[var(--surface)] p-6 shadow-[var(--shadow-modal)]"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-[var(--accent)]">{t.toolbar.settings}</p>
-                <h2
-                  id="settings-dialog-title"
-                  className="mt-2 text-2xl font-semibold text-[var(--text)]"
-                >
-                  {t.toolbar.settings}
-                </h2>
-              </div>
-              <button
-                type="button"
-                className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
-                onClick={() => setShowSettingsPanel(false)}
-              >
-                {t.common.close}
-              </button>
-            </div>
-            <div className="mt-5 space-y-6">
-              {renderThemeSettings()}
-              {renderSaveSettings()}
-              {renderBetaSettings()}
-            </div>
-            <div className="mt-6 border-t border-[var(--separator)] pt-4 text-center">
-              <p className="text-xs text-[var(--text3)]">
-                {t.legal.notice(new Date().getFullYear())}
-              </p>
-              <div className="mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs">
-                {appLegalLinks.map((link) => (
-                  <a
-                    key={link.href}
-                    href={link.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[var(--accent)] hover:underline"
-                  >
-                    {link.label}
-                  </a>
-                ))}
-                <LocaleSwitcher />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ════════════ Rename Dialog ════════════ */}
-      {renameDialog && (
-        <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-[var(--overlay-strong)] p-4">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="rename-dialog-title"
-            className="w-full max-w-md rounded-xl border border-[var(--separator)] bg-[var(--surface)] p-6"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-[var(--accent)]">{t.files.explorer}</p>
-                <h2
-                  id="rename-dialog-title"
-                  className="mt-2 text-xl font-semibold text-[var(--text)]"
-                >
-                  {t.files.renameItem}
-                </h2>
-                <p className="mt-2 text-sm text-[var(--text2)]">
-                  {t.files.currentName} {renameDialog.currentName}
-                </p>
-              </div>
-              <button
-                type="button"
-                className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
-                onClick={() => setRenameDialog(null)}
-              >
-                {t.common.cancel}
-              </button>
-            </div>
-            <form className="mt-5 space-y-4" onSubmit={submitRename}>
-              <label className="block">
-                <span className="mb-2 block text-sm text-[var(--text2)]">{t.files.itemName}</span>
-                <div className="flex h-10 w-full overflow-hidden rounded-xl border border-[var(--separator)] bg-[var(--bg)] focus-within:border-[var(--accent)]">
-                  <input
-                    ref={renameInputRef}
-                    aria-label={t.files.itemName}
-                    value={renameValue}
-                    onChange={(event) =>
-                      setRenameValue(
-                        renameDialog.isDocument
-                          ? normalizeDocumentEditableName(event.target.value)
-                          : event.target.value,
-                      )
-                    }
-                    className="min-w-0 flex-1 border-0 bg-transparent px-3 text-sm text-[var(--text)] outline-none"
-                  />
-                  {renameDialog.isDocument ? (
-                    <span className="flex shrink-0 items-center border-l border-[var(--separator)] bg-[var(--surface2)] px-3 text-sm text-[var(--text3)]">
-                      {PSEUDO_EXTENSION}
-                    </span>
-                  ) : null}
-                </div>
-              </label>
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
-                  onClick={() => setRenameDialog(null)}
-                >
-                  {t.common.cancel}
-                </button>
-                <button
-                  type="submit"
-                  className="rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
-                  disabled={!renameValue.trim()}
-                >
-                  {t.files.saveName}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ════════════ Delete Dialog ════════════ */}
-      {deleteDialog && (
-        <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center bg-[var(--overlay-strong)] p-4">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="delete-dialog-title"
-            className="w-full max-w-md rounded-xl border border-[var(--separator)] bg-[var(--surface)] p-6"
-          >
-            <p className="text-xs uppercase tracking-[0.2em] text-[var(--red)]">{t.files.explorer}</p>
-            <h2
-              id="delete-dialog-title"
-              className="mt-2 text-xl font-semibold text-[var(--text)]"
-            >
-              {t.files.confirmDelete}
-            </h2>
-            <p className="mt-3 text-sm text-[var(--text2)]">{deleteDialog.message}</p>
-            <div className="mt-6 flex justify-end gap-2">
-              <button
-                type="button"
-                className="rounded-lg border border-[var(--separator)] bg-[var(--surface2)] px-3 py-1.5 text-sm text-[var(--text2)] hover:bg-[var(--surface3)]"
-                onClick={() => setDeleteDialog(null)}
-              >
-                {t.common.cancel}
-              </button>
-              <button
-                type="button"
-                className="rounded-lg bg-[var(--red)] px-3 py-1.5 text-sm font-semibold text-white"
-                onClick={confirmDelete}
-              >
-                {t.common.delete}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {renderSettingsDialog()}
+      {renderRenameDialog()}
+      {renderDeleteDialog()}
       {renderSignInPromptDialog()}
       {renderCreateFileDialog()}
       {renderFlowchartPromptDialog()}
