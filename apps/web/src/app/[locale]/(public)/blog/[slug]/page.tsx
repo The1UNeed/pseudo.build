@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Play } from "lucide-react";
 import { PublicHeader } from "@/app/components/PublicHeader";
-import { localePath, localeTags, localeUrl, localizedMetadata, ogImage } from "@/i18n/config";
+import { formatDate, localePath, localeTags, localeUrl, pageMetadata } from "@/i18n/config";
 import { getDictionary } from "@/i18n/messages";
 import { resolveLocale } from "@/i18n/server";
 import { getPost, posts, productName } from "@/lib/seo-content";
@@ -22,20 +22,16 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const post = getPost(locale, slug);
   if (!post) return {};
 
+  const base = pageMetadata(
+    locale,
+    `/blog/${post.slug}`,
+    post.title,
+    post.description,
+    getDictionary(locale).meta.ogImageAlt,
+  );
   return {
-    title: post.title,
-    description: post.description,
-    alternates: localizedMetadata(locale, `/blog/${post.slug}`),
-    openGraph: {
-      title: `${post.title} | ${productName}`,
-      description: post.description,
-      url: localeUrl(locale, `/blog/${post.slug}`),
-      type: "article",
-      locale: locale === "zh" ? "zh_CN" : "en_US",
-      images: [ogImage],
-      publishedTime: post.date,
-      tags: post.tags,
-    },
+    ...base,
+    openGraph: { ...base.openGraph, type: "article", publishedTime: post.date, tags: post.tags },
   };
 }
 
@@ -80,7 +76,7 @@ export default async function BlogPostPage({ params }: PageProps) {
           <ArrowLeft size={16} /> {t.blog.back}
         </Link>
         <p className="mt-8 text-xs font-bold uppercase tracking-[0.14em] text-[var(--ink-3)]">
-          {post.date} · {post.readingTime}
+          {formatDate(locale, post.date)} · {post.readingTime}
         </p>
         <h1 className="site-h1 mt-4 text-[2.4rem] md:text-[3.4rem]">{post.title}</h1>
         <p className="site-lede mt-5">{post.description}</p>

@@ -1,9 +1,15 @@
 import { ImageResponse } from "next/og";
-import { en } from "@/i18n/messages/en";
+import { ogImage } from "@/i18n/config";
 
-export const alt = en.meta.ogImageAlt;
-export const size = { width: 1200, height: 630 };
-export const contentType = "image/png";
+/**
+ * The shared social image at /opengraph-image. A plain route handler rather than the opengraph-image
+ * file convention: at the app root that convention also tags the root 404 and error shells, which have
+ * no metadataBase (it lives in the [locale] layout) and so resolved the image URL against localhost.
+ * Pages reference it through `ogImage` in i18n/config.ts.
+ */
+export const dynamic = "force-static";
+
+const size = { width: ogImage.width, height: ogImage.height };
 
 const code = [
   ["kw", "DECLARE"],
@@ -11,7 +17,7 @@ const code = [
   ["ty", "INTEGER"],
 ] as const;
 
-export default function OpenGraphImage() {
+export function GET() {
   return new ImageResponse(
     (
       <div

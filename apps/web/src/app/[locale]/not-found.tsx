@@ -1,16 +1,16 @@
 import Link from "next/link";
 import { headers } from "next/headers";
-import { defaultLocale, isLocale, localePath } from "@/i18n/config";
+import { defaultLocale, isLocale, localePath, localeTags } from "@/i18n/config";
 import { getDictionary } from "@/i18n/messages";
 import { productName } from "@/lib/seo-content";
 
 /**
- * Rendered for notFound() anywhere under /[locale]. Next serves it in a bare error shell
- * without the root layout's stylesheet, so this page carries its own minimal styles.
+ * Rendered inside the [locale] layout for notFound() and for unmatched paths (via [...rest]).
+ * Its styles are scoped to .nf so they never override the site's own body styles or theme.
  * not-found pages get no params, so the locale comes from the x-locale header the proxy sets.
  */
 const styles = `
-  body { margin: 0; font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; background: #f7f8f3; color: #151716; }
+  .nf { font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; background: #f7f8f3; color: #151716; }
   .nf { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 48px 20px; text-align: center; }
   .nf-brand { font-weight: 800; font-size: 15px; letter-spacing: -0.01em; color: #151716; text-decoration: none; }
   .nf-eyebrow { margin: 40px 0 0; font-size: 12px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: #0b6e4f; }
@@ -27,7 +27,7 @@ export default async function NotFound() {
   const t = getDictionary(locale).notFound;
 
   return (
-    <main className="nf" lang={locale === "zh" ? "zh-CN" : "en"}>
+    <main className="nf" lang={localeTags[locale]}>
       <style dangerouslySetInnerHTML={{ __html: styles }} />
       <Link href={localePath(locale, "/")} className="nf-brand">
         {productName}

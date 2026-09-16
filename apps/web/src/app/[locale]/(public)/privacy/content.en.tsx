@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { LegalContent } from "@/app/components/LegalPage";
+import { localePath } from "@/i18n/config";
 import { contactEmail, githubUrl, productName } from "@/lib/seo-content";
 
 const providers = [
@@ -11,7 +12,7 @@ const providers = [
 export const privacyEn: LegalContent = {
   eyebrow: "privacy",
   title: "We collect as little as the product allows.",
-  summary: `This policy explains what data ${productName} handles, why, where it lives, and how to remove it. The short version: nothing leaves your browser unless you sign in and turn on cloud sync.`,
+  summary: `This policy explains what data ${productName} handles, why, where it lives, and how to remove it. The short version: your code stays in your browser unless you sign in. Signing in turns on cloud sync, which saves your workspace to our database automatically.`,
   sections: [
     {
       id: "controller",
@@ -47,14 +48,14 @@ export const privacyEn: LegalContent = {
             <tr>
               <td>Your pseudocode and workspace layout</td>
               <td>Always, while you edit</td>
-              <td>Your browser only. Convex, only if you sign in and save.</td>
-              <td>You delete it or delete your account.</td>
+              <td>Your browser only. Also Convex, once you sign in.</td>
+              <td>You delete it in the editor or your account is deleted.</td>
             </tr>
             <tr>
               <td>Email address, name, profile image, sign-in method</td>
               <td>Only if you create an account</td>
               <td>Clerk. Email and name are also copied to Convex next to your workspace.</td>
-              <td>You delete your account.</td>
+              <td>Your account is deleted.</td>
             </tr>
             <tr>
               <td>Aggregate page views and load timings</td>
@@ -101,7 +102,7 @@ export const privacyEn: LegalContent = {
             cookies that are strictly necessary to keep you signed in and sets no advertising or analytics cookies.
           </p>
           <p>
-            When you save a workspace, it is sent over HTTPS to our <a href="https://convex.dev" target="_blank" rel="noopener noreferrer">Convex</a> database
+            While you are signed in, your workspace is saved automatically as you work. Each save is sent over HTTPS to our <a href="https://convex.dev" target="_blank" rel="noopener noreferrer">Convex</a> database
             and stored against your Clerk user ID, together with your email address and name so the record can be
             identified. Workspaces are limited in size and validated before storage.
           </p>
@@ -210,8 +211,9 @@ export const privacyEn: LegalContent = {
             <strong>Mainland China.</strong> Under the Personal Information Protection Law, we tell you here that
             the recipients above, located in the United States, will receive your email address, name, profile
             image, and synced workspace for the sole purpose of providing your account and cloud sync, by encrypted
-            transfer over HTTPS. We ask for this consent separately when you create an account. You can withdraw it at
-            any time by deleting your account, and you can exercise your rights against these recipients through us
+            transfer over HTTPS. Before you create an account, the sign-in page tells you that account data is stored
+            by our providers in the United States, and creating an account means you agree to this transfer. You can
+            withdraw that agreement at any time by deleting your account, and you can exercise your rights against these recipients through us
             at <a href={`mailto:${contactEmail}`}>{contactEmail}</a>. If you do not want your data to leave China,
             use the editor without an account: nothing is transferred.
           </p>
@@ -224,17 +226,18 @@ export const privacyEn: LegalContent = {
       content: (
         <>
           <p>
-            Synced workspaces and your user record are kept until you delete them or delete your account. Deleting
-            your account from Settings inside the editor removes your Clerk profile, and Clerk notifies our database,
-            which deletes your workspace and user record. Provider backups may persist for a limited period afterwards.
+            Synced workspaces and your user record are kept until your account is deleted. When a Clerk account is
+            deleted, Clerk sends a signed notification to our database, which then deletes the matching workspace and
+            user record. The editor has no separate control to delete or export your synced data. Provider backups may
+            persist for a limited period afterwards.
           </p>
           <p>
             Request logs are kept by Vercel for a short operational period and analytics data is aggregated, so
             neither can be traced back to you afterwards.
           </p>
           <p>
-            You can also email <a href={`mailto:${contactEmail}`}>{contactEmail}</a> to request a copy or deletion of
-            your data. We answer within 30 days, which is inside the deadlines set by the GDPR, the UK GDPR, the PIPL,
+            To have your account and data deleted, or to get a copy of your data, email{" "}
+            <a href={`mailto:${contactEmail}`}>{contactEmail}</a>. We answer within 30 days, which is inside the deadlines set by the GDPR, the UK GDPR, the PIPL,
             and US state privacy laws.
           </p>
         </>
@@ -288,7 +291,7 @@ export const privacyEn: LegalContent = {
             </li>
           </ul>
           <p>
-            To exercise any right, use the deletion controls in the app or email{" "}
+            To exercise any right, email{" "}
             <a href={`mailto:${contactEmail}`}>{contactEmail}</a>. We may ask you to confirm your identity through the
             email address on your account.
           </p>
@@ -325,7 +328,7 @@ export const privacyEn: LegalContent = {
         <p>
           All traffic is encrypted with HTTPS, access to workspaces is verified on every request, and secrets are
           kept out of the code. If a breach ever affects your data, we will notify you and the relevant authorities as
-          the law requires. Details are on the <Link href="/security">security page</Link>.
+          the law requires. Details are on the <Link href={localePath("en", "/security")}>security page</Link>.
         </p>
       ),
     },

@@ -1,6 +1,7 @@
 // Simplified Chinese translation of content.en.tsx. Keep section ids identical.
 import Link from "next/link";
 import type { LegalContent } from "@/app/components/LegalPage";
+import { localePath } from "@/i18n/config";
 import { contactEmail, githubUrl, productName } from "@/lib/seo-content";
 
 const providers = [
@@ -12,7 +13,7 @@ const providers = [
 export const privacyZh: LegalContent = {
   eyebrow: "隐私政策",
   title: "我们只收集产品运行所必需的最少数据。",
-  summary: `本政策说明 ${productName} 处理哪些数据、处理的原因、数据存储在何处以及如何删除。简而言之：除非你登录并开启云端同步，否则任何数据都不会离开你的浏览器。`,
+  summary: `本政策说明 ${productName} 处理哪些数据、处理的原因、数据存储在何处以及如何删除。简而言之：除非你登录，否则你的代码只会留在你的浏览器中。登录即开启云端同步，你的工作区会自动保存到我们的数据库。`,
   sections: [
     {
       id: "controller",
@@ -45,14 +46,14 @@ export const privacyZh: LegalContent = {
             <tr>
               <td>你的伪代码与工作区布局</td>
               <td>编辑期间始终存在</td>
-              <td>仅在你的浏览器中。只有当你登录并保存时才会存储到 Convex。</td>
-              <td>直至你删除它或删除账号。</td>
+              <td>仅在你的浏览器中。登录后也会存储到 Convex。</td>
+              <td>直至你在编辑器中删除它，或你的账号被删除。</td>
             </tr>
             <tr>
               <td>电子邮箱、姓名、头像、登录方式</td>
               <td>仅在你创建账号时</td>
               <td>Clerk。邮箱和姓名还会复制到 Convex，与你的工作区一同存放。</td>
-              <td>直至你删除账号。</td>
+              <td>直至你的账号被删除。</td>
             </tr>
             <tr>
               <td>汇总的页面访问量与加载耗时</td>
@@ -93,7 +94,7 @@ export const privacyZh: LegalContent = {
             当你登录时，身份认证由 <a href="https://clerk.com" target="_blank" rel="noopener noreferrer">Clerk</a> 处理。Clerk 会存储你的电子邮箱、姓名、头像、登录方式和会话信息。Clerk 设置的 Cookie 仅为维持登录状态所严格必需，不会设置任何广告或统计分析 Cookie。
           </p>
           <p>
-            当你保存工作区时，数据会通过 HTTPS 发送到我们的 <a href="https://convex.dev" target="_blank" rel="noopener noreferrer">Convex</a> 数据库，并与你的 Clerk 用户 ID 关联存储，同时附带你的电子邮箱和姓名以便识别记录。工作区有大小限制，并会在存储前进行校验。
+            登录后，你的工作区会在你编辑时自动保存，每次保存的数据都会通过 HTTPS 发送到我们的 <a href="https://convex.dev" target="_blank" rel="noopener noreferrer">Convex</a> 数据库，并与你的 Clerk 用户 ID 关联存储，同时附带你的电子邮箱和姓名以便识别记录。工作区有大小限制，并会在存储前进行校验。
           </p>
           <p>
             只有你本人可以读取你的工作区。每次请求都会在 API 层和数据库函数内部验证你的 Clerk 会话令牌，以此强制执行访问控制。我们不会阅读、分析你的工作区，也不会用它训练任何模型。
@@ -178,7 +179,7 @@ export const privacyZh: LegalContent = {
             <strong>欧盟、欧洲经济区及英国。</strong>跨境传输依据服务商的数据处理协议进行，该协议采用欧盟标准合同条款和英国国际数据传输附录；若服务商已通过认证，则依据欧盟—美国数据隐私框架。
           </p>
           <p>
-            <strong>中国大陆。</strong>根据《中华人民共和国个人信息保护法》，我们在此告知你：上表所列位于美国的接收方将接收你的电子邮箱、姓名、头像以及已同步的工作区，仅用于为你提供账号和云端同步服务，传输方式为经 HTTPS 加密的传输。我们会在你创建账号时单独征求你对该项向境外提供个人信息的同意。你可以随时通过删除账号撤回该同意，并可通过我们（<a href={`mailto:${contactEmail}`}>{contactEmail}</a>）向上述接收方行使你的权利。如果你不希望数据离开中国，请在不登录的情况下使用编辑器：此时不会发生任何传输。
+            <strong>中国大陆。</strong>根据《中华人民共和国个人信息保护法》，我们在此告知你：上表所列位于美国的接收方将接收你的电子邮箱、姓名、头像以及已同步的工作区，仅用于为你提供账号和云端同步服务，传输方式为经 HTTPS 加密的传输。在你创建账号之前，登录页面会告知你账号数据由我们的服务商存储在美国；创建账号即表示你同意上述向境外提供个人信息的行为。你可以随时通过删除账号撤回该同意，并可通过我们（<a href={`mailto:${contactEmail}`}>{contactEmail}</a>）向上述接收方行使你的权利。如果你不希望数据离开中国，请在不登录的情况下使用编辑器：此时不会发生任何传输。
           </p>
         </>
       ),
@@ -189,13 +190,13 @@ export const privacyZh: LegalContent = {
       content: (
         <>
           <p>
-            已同步的工作区和你的用户记录会一直保存，直至你删除它们或删除账号。在编辑器的“设置”中删除账号会移除你的 Clerk 资料，Clerk 随即通知我们的数据库删除你的工作区和用户记录。服务商的备份可能在此后继续保留一段有限的时间。
+            已同步的工作区和你的用户记录会一直保存，直至你的账号被删除。Clerk 账号被删除时，Clerk 会向我们的数据库发送带签名的通知，数据库随即删除对应的工作区和用户记录。编辑器没有单独删除或导出已同步数据的功能。服务商的备份可能在此后继续保留一段有限的时间。
           </p>
           <p>
             请求日志由 Vercel 保留一段短暂的运维期限，统计分析数据仅以汇总形式保留，因此二者此后都无法追溯到你本人。
           </p>
           <p>
-            你也可以发送邮件至 <a href={`mailto:${contactEmail}`}>{contactEmail}</a> 请求获取数据副本或删除数据。我们会在 30 天内答复，该期限符合 GDPR、英国 GDPR、《个人信息保护法》以及美国各州隐私法规定的时限。
+            如需删除你的账号和数据，或获取数据副本，请发送邮件至 <a href={`mailto:${contactEmail}`}>{contactEmail}</a>。我们会在 30 天内答复，该期限符合 GDPR、英国 GDPR、《个人信息保护法》以及美国各州隐私法规定的时限。
           </p>
         </>
       ),
@@ -237,7 +238,7 @@ export const privacyZh: LegalContent = {
             </li>
           </ul>
           <p>
-            如需行使任何权利，请使用应用内的删除功能或发送邮件至 <a href={`mailto:${contactEmail}`}>{contactEmail}</a>。我们可能会要求你通过账号绑定的邮箱确认身份。
+            如需行使任何权利，请发送邮件至 <a href={`mailto:${contactEmail}`}>{contactEmail}</a>。我们可能会要求你通过账号绑定的邮箱确认身份。
           </p>
         </>
       ),
@@ -264,7 +265,7 @@ export const privacyZh: LegalContent = {
       title: "12. 安全",
       content: (
         <p>
-          所有流量均通过 HTTPS 加密，对工作区的访问在每次请求时都会进行验证，密钥不会出现在代码中。如果发生影响你数据的安全事件，我们将依法通知你和相关监管机构。详情请参阅<Link href="/zh/security">安全页面</Link>。
+          所有流量均通过 HTTPS 加密，对工作区的访问在每次请求时都会进行验证，密钥不会出现在代码中。如果发生影响你数据的安全事件，我们将依法通知你和相关监管机构。详情请参阅<Link href={localePath("zh", "/security")}>安全页面</Link>。
         </p>
       ),
     },

@@ -49,8 +49,9 @@ export const securityEn: LegalContent = {
       content: (
         <ul>
           <li>
-            All traffic uses HTTPS. HSTS, a restrictive Content Security Policy, and standard hardening headers are
-            set on every response.
+            All traffic uses HTTPS. HSTS, a Content Security Policy, and standard hardening headers are set on every
+            response. The policy limits scripts, connections, and frames to our own origin and the providers we use,
+            but it still allows inline scripts.
           </li>
           <li>
             Workspace payloads are validated twice, in the API route and in Convex, with hard limits on size, depth,
@@ -60,12 +61,12 @@ export const securityEn: LegalContent = {
             The editor loads Monaco and its workers from our own origin, not a third-party CDN.
           </li>
           <li>
-            Secrets live only in environment variables on Vercel and Convex. The repository contains no credentials
-            and the deploy scripts refuse to run if secret files are present.
+            Secrets live only in environment variables on Vercel and Convex. The repository contains no credentials,
+            and environment files are excluded from version control.
           </li>
           <li>Dependencies are pinned in a lockfile and reviewed against known advisories before releases.</li>
           <li>
-            When you delete your account, Clerk sends a signed webhook and Convex deletes your workspace and user
+            When your account is deleted, Clerk sends a signed webhook and Convex deletes your workspace and user
             record.
           </li>
         </ul>

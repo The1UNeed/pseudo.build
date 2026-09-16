@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { PublicHeader } from "@/app/components/PublicHeader";
-import { localePath, type Locale } from "@/i18n/config";
+import { formatDate, localePath, type Locale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/messages";
 
 export type LegalSection = {
@@ -38,7 +38,7 @@ export function LegalPage({ locale, eyebrow, title, summary, effectiveDate, sect
         <h1 className="site-h1 mt-4 max-w-3xl">{title}</h1>
         <p className="site-lede mt-5 max-w-2xl">{summary}</p>
         <p className="mt-4 text-xs text-[var(--ink-3)]">
-          {t.effective} {effectiveDate}
+          {t.effective} {formatDate(locale, effectiveDate)}
         </p>
       </section>
 

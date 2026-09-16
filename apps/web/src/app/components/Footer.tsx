@@ -3,7 +3,7 @@ import { BrandMark } from "@/app/components/BrandMark";
 import { localePath, type Locale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/messages";
 import { LocaleSwitcher } from "@/i18n/LocaleSwitcher";
-import { authorName, githubUrl, productName, productSlogan } from "@/lib/seo-content";
+import { authorName, githubUrl, productName } from "@/lib/seo-content";
 
 export function Footer({ locale }: { locale: Locale }) {
   const year = new Date().getFullYear();
@@ -44,7 +44,7 @@ export function Footer({ locale }: { locale: Locale }) {
             <BrandMark size={28} />
             <span className="text-lg font-extrabold tracking-tight">{productName}</span>
           </div>
-          <p className="mt-4 max-w-xs text-sm leading-6">{productSlogan}</p>
+          <p className="mt-4 max-w-xs text-sm leading-6">{t.slogan}</p>
           <p className="mt-2 text-sm leading-6">{t.slogan2}</p>
           <p className="mt-6 text-xs font-bold uppercase tracking-[0.16em] text-white">{t.language}</p>
           <p className="mt-2 text-sm">

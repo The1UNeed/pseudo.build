@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { PublicHeader } from "@/app/components/PublicHeader";
-import { localePath, localeTags, localeUrl, localizedMetadata } from "@/i18n/config";
+import { localePath, localeTags, localeUrl, pageMetadata } from "@/i18n/config";
 import { getDictionary } from "@/i18n/messages";
 import { resolveLocale, type LocaleParams } from "@/i18n/server";
 import { getDocs } from "@/lib/seo-content";
@@ -10,11 +10,7 @@ import { getDocs } from "@/lib/seo-content";
 export async function generateMetadata({ params }: LocaleParams): Promise<Metadata> {
   const locale = await resolveLocale(params);
   const t = getDictionary(locale).meta;
-  return {
-    title: t.docsTitle,
-    description: t.docsDescription,
-    alternates: localizedMetadata(locale, "/docs"),
-  };
+  return pageMetadata(locale, "/docs", t.docsTitle, t.docsDescription, t.ogImageAlt);
 }
 
 export default async function DocsIndexPage({ params }: LocaleParams) {

@@ -2,30 +2,27 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { PublicHeader } from "@/app/components/PublicHeader";
-import { localePath, localeTags, localeUrl, localizedMetadata } from "@/i18n/config";
+import { formatDate, localePath, localeTags, localeUrl, pageMetadata } from "@/i18n/config";
 import { getDictionary } from "@/i18n/messages";
 import { resolveLocale, type LocaleParams } from "@/i18n/server";
-import { getPosts, productName } from "@/lib/seo-content";
+import { getPosts } from "@/lib/seo-content";
 
 export async function generateMetadata({ params }: LocaleParams): Promise<Metadata> {
   const locale = await resolveLocale(params);
   const t = getDictionary(locale).meta;
-  return {
-    title: t.blogTitle,
-    description: t.blogDescription,
-    alternates: localizedMetadata(locale, "/blog"),
-  };
+  return pageMetadata(locale, "/blog", t.blogTitle, t.blogDescription, t.ogImageAlt);
 }
 
 export default async function BlogIndexPage({ params }: LocaleParams) {
   const locale = await resolveLocale(params);
-  const t = getDictionary(locale).blog;
+  const dict = getDictionary(locale);
+  const t = dict.blog;
   const posts = getPosts(locale);
 
   const structuredData = {
     "@context": "https://schema.org",
     "@type": "Blog",
-    name: `${productName} Blog`,
+    name: dict.meta.blogName,
     url: localeUrl(locale, "/blog"),
     inLanguage: localeTags[locale],
   };
@@ -43,7 +40,7 @@ export default async function BlogIndexPage({ params }: LocaleParams) {
         {posts.map((post) => (
           <Link key={post.slug} href={localePath(locale, `/blog/${post.slug}`)} className="site-card p-6">
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-[var(--ink-3)]">
-              {post.date} · {post.readingTime}
+              {formatDate(locale, post.date)} · {post.readingTime}
             </p>
             <h2 className="mt-4 text-2xl font-extrabold leading-snug tracking-tight">{post.title}</h2>
             <p className="mt-3 text-sm leading-6 text-[var(--ink-2)]">{post.description}</p>

@@ -404,16 +404,20 @@ export const faqItems: FaqItem[] = [
   },
 ];
 
+const docsByLocale: Record<Locale, SeoDoc[]> = { en: docs, zh: docsZh };
+const postsByLocale: Record<Locale, SeoPost[]> = { en: posts, zh: postsZh };
+const faqByLocale: Record<Locale, FaqItem[]> = { en: faqItems, zh: faqZh };
+
 export function getDocs(locale: Locale): SeoDoc[] {
-  return locale === "zh" ? docsZh : docs;
+  return docsByLocale[locale];
 }
 
 export function getPosts(locale: Locale): SeoPost[] {
-  return locale === "zh" ? postsZh : posts;
+  return postsByLocale[locale];
 }
 
 export function getFaq(locale: Locale): FaqItem[] {
-  return locale === "zh" ? faqZh : faqItems;
+  return faqByLocale[locale];
 }
 
 export function getDoc(locale: Locale, slug: string) {

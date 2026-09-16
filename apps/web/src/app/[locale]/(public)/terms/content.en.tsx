@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { LegalContent } from "@/app/components/LegalPage";
+import { localePath } from "@/i18n/config";
 import { contactEmail, githubUrl, productName } from "@/lib/seo-content";
 
 export const termsEn: LegalContent = {
@@ -37,8 +38,9 @@ export const termsEn: LegalContent = {
             <li>You must give accurate sign-up information and keep your login credentials secure.</li>
             <li>You are responsible for activity that happens under your account.</li>
             <li>
-              You can delete your account at any time from Settings inside the editor. Deleting your account removes
-              your synced workspace.
+              You can have your account deleted at any time by emailing{" "}
+              <a href={`mailto:${contactEmail}`}>{contactEmail}</a>. When a Clerk account is deleted, our database
+              removes the synced workspace and user record that belong to it.
             </li>
             <li>
               To create an account you must be at least 13 years old in the United States and the United Kingdom, 14
@@ -77,7 +79,7 @@ export const termsEn: LegalContent = {
             <li>Attempt to access other users&apos; accounts or workspaces.</li>
             <li>
               Probe, scan, or overload the service or its providers, except as permitted by our{" "}
-              <Link href="/security">security policy</Link>.
+              <Link href={localePath("en", "/security")}>security policy</Link>.
             </li>
             <li>Automate requests to the sync API at volumes a person could not produce by hand.</li>
             <li>Use the service to distribute spam, malware, or abusive material.</li>
@@ -134,7 +136,7 @@ export const termsEn: LegalContent = {
             removed. Where practical we will announce changes that affect stored data on the GitHub repository at
             least 30 days ahead of time.
           </p>
-          <p>Keep your own copies of important work. The editor lets you export files at any time.</p>
+          <p>Keep your own copies of important work, for example by copying your code out of the editor.</p>
         </>
       ),
     },
@@ -167,7 +169,7 @@ export const termsEn: LegalContent = {
       title: "9. Ending the agreement",
       content: (
         <p>
-          You can stop using the service at any time and delete your account from Settings. We may end or suspend
+          You can stop using the service at any time and ask us to delete your account. We may end or suspend
           your access if you break these terms or if we discontinue the service. Sections 3, 6, 8, and 10 continue to
           apply afterwards.
         </p>
@@ -210,7 +212,7 @@ export const termsEn: LegalContent = {
           <a href={`${githubUrl}/issues`} target="_blank" rel="noopener noreferrer">
             GitHub
           </a>
-          . For account or privacy matters, see the <Link href="/privacy">privacy policy</Link>.
+          . For account or privacy matters, see the <Link href={localePath("en", "/privacy")}>privacy policy</Link>.
         </p>
       ),
     },

@@ -9,8 +9,10 @@ const hasClerkServerConfig = Boolean(
 const isElectronBuild = process.env.BUILD_TARGET === "electron";
 const shouldUseClerkProxy = !isElectronBuild && hasClerkServerConfig;
 
-// Paths that are not pages: API routes, Next internals, root metadata files, anything with an extension.
-const passthrough = /^\/(api|_next|opengraph-image|twitter-image)(\/|$)|\.[a-z0-9]+$/i;
+// Paths that are not pages: API routes, Next internals, root metadata routes, and static files by extension.
+// Only known file extensions pass, so a page slug such as /docs/v1.2 is still localized.
+const passthrough =
+  /^\/(api|_next|\.well-known|opengraph-image|twitter-image)(\/|$)|\.(txt|xml|json|webmanifest|ico|png|jpe?g|gif|svg|webp|avif|css|js|mjs|map|wasm|woff2?|ttf|otf|pdf|zip)$/i;
 
 /**
  * English is served at the bare path (`/docs`) and rewritten to `/en/docs` internally.

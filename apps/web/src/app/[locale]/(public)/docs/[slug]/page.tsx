@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Play } from "lucide-react";
 import { PublicHeader } from "@/app/components/PublicHeader";
-import { localePath, localeTags, localeUrl, localizedMetadata, ogImage } from "@/i18n/config";
+import { formatDate, localePath, localeTags, localeUrl, pageMetadata } from "@/i18n/config";
 import { getDictionary } from "@/i18n/messages";
 import { resolveLocale } from "@/i18n/server";
 import { docs, getDoc, productName } from "@/lib/seo-content";
@@ -22,19 +22,14 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const doc = getDoc(locale, slug);
   if (!doc) return {};
 
-  return {
-    title: doc.title,
-    description: doc.description,
-    alternates: localizedMetadata(locale, `/docs/${doc.slug}`),
-    openGraph: {
-      title: `${doc.title} | ${productName}`,
-      description: doc.description,
-      url: localeUrl(locale, `/docs/${doc.slug}`),
-      type: "article",
-      locale: locale === "zh" ? "zh_CN" : "en_US",
-      images: [ogImage],
-    },
-  };
+  const base = pageMetadata(
+    locale,
+    `/docs/${doc.slug}`,
+    doc.title,
+    doc.description,
+    getDictionary(locale).meta.ogImageAlt,
+  );
+  return { ...base, openGraph: { ...base.openGraph, type: "article", modifiedTime: doc.updated } };
 }
 
 export default async function DocPage({ params }: PageProps) {
@@ -81,7 +76,7 @@ export default async function DocPage({ params }: PageProps) {
         <h1 className="site-h1 mt-6 text-[2.4rem] md:text-[3.4rem]">{doc.title}</h1>
         <p className="site-lede mt-5">{doc.description}</p>
         <p className="mt-3 text-xs text-[var(--ink-3)]">
-          {t.updated} {doc.updated}
+          {t.updated} {formatDate(locale, doc.updated)}
         </p>
 
         <div className="site-prose mt-6">

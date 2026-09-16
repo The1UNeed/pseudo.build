@@ -45,7 +45,7 @@ export const securityZh: LegalContent = {
       content: (
         <ul>
           <li>
-            所有流量均使用 HTTPS。每个响应都设置了 HSTS、严格的内容安全策略（CSP）以及标准的安全加固头。
+            所有流量均使用 HTTPS。每个响应都设置了 HSTS、内容安全策略（CSP）以及标准的安全加固头。该策略将脚本、网络连接和框架限制在我们自己的源和所用的服务商范围内，但仍允许内联脚本。
           </li>
           <li>
             工作区数据在 API 路由和 Convex 中各校验一次，对大小、深度、节点数量和结构设有硬性限制。
@@ -54,11 +54,11 @@ export const securityZh: LegalContent = {
             编辑器从我们自己的源加载 Monaco 及其 worker，而非第三方 CDN。
           </li>
           <li>
-            密钥仅存放于 Vercel 和 Convex 的环境变量中。代码仓库不含任何凭据，若存在密钥文件，部署脚本将拒绝运行。
+            密钥仅存放于 Vercel 和 Convex 的环境变量中。代码仓库不含任何凭据，环境变量文件也不纳入版本控制。
           </li>
           <li>依赖项在锁文件中固定版本，并在每次发布前对照已知安全公告进行审查。</li>
           <li>
-            当你删除账号时，Clerk 会发送带签名的 Webhook，Convex 随即删除你的工作区和用户记录。
+            当你的账号被删除时，Clerk 会发送带签名的 Webhook，Convex 随即删除你的工作区和用户记录。
           </li>
         </ul>
       ),

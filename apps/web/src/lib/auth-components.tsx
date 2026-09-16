@@ -10,11 +10,14 @@ import {
   useAuth as useClerkAuth,
 } from "@clerk/nextjs";
 import { zhCN } from "@clerk/localizations";
-import { localePath } from "@/i18n/config";
+import { localePath, type Locale } from "@/i18n/config";
 import { useDictionary, useLocale } from "@/i18n/context";
 import { getClientAppPlatform, platformUsesCloudSaving } from "@/lib/platform";
 
 const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
+/** Clerk's built-in strings per locale; English is Clerk's default. */
+const clerkLocalizations: Partial<Record<Locale, typeof zhCN>> = { zh: zhCN };
 
 type AuthState = ReturnType<typeof useClerkAuth>;
 
@@ -38,7 +41,7 @@ export function ClerkProvider({ children }: { children: ReactNode }) {
     return <>{children}</>;
   }
 
-  const base = locale === "zh" ? zhCN : ({} as Partial<typeof zhCN>);
+  const base: Partial<typeof zhCN> = clerkLocalizations[locale] ?? {};
 
   return (
     <ClerkProviderBase
@@ -126,7 +129,7 @@ export function SignInButton({
   }
 
   return (
-    <ClerkSignInButton fallbackRedirectUrl="/app" {...props}>
+    <ClerkSignInButton {...props}>
       {children}
     </ClerkSignInButton>
   );
@@ -141,7 +144,7 @@ export function SignUpButton({
   }
 
   return (
-    <ClerkSignUpButton fallbackRedirectUrl="/app" {...props}>
+    <ClerkSignUpButton {...props}>
       {children}
     </ClerkSignUpButton>
   );

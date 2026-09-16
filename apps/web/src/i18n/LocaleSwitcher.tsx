@@ -2,14 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { localeNames, localePath, localeTags, locales } from "./config";
+import { localeNames, localePath, localeTags, locales, stripLocalePrefix } from "./config";
 import { useLocale } from "./context";
 
 /** Links to the current page in every other locale. */
 export function LocaleSwitcher({ className }: { className?: string }) {
   const locale = useLocale();
-  const pathname = usePathname() ?? "/";
-  const bare = pathname.replace(/^\/(zh)(?=\/|$)/, "") || "/";
+  const bare = stripLocalePrefix(usePathname() ?? "/");
 
   return (
     <>

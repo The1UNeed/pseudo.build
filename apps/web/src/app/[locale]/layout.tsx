@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
-import { localeTags, locales, localeUrl, localizedMetadata, ogImage } from "@/i18n/config";
+import { localeTags, locales, sharedSocialMetadata } from "@/i18n/config";
 import { LocaleProvider } from "@/i18n/context";
 import { getDictionary } from "@/i18n/messages";
 import { resolveLocale, type LocaleParams } from "@/i18n/server";
@@ -29,22 +29,9 @@ export async function generateMetadata({ params }: LocaleParams): Promise<Metada
     publisher: organizationName,
     keywords: t.keywords,
     category: "education",
-    alternates: localizedMetadata(locale, "/"),
-    openGraph: {
-      type: "website",
-      locale: locale === "zh" ? "zh_CN" : "en_US",
-      url: localeUrl(locale, "/"),
-      siteName: productName,
-      title: t.homeTitle,
-      description: t.homeDescription,
-      images: [{ ...ogImage, alt: t.ogImageAlt }],
-    },
-    twitter: {
-      card: "summary_large_image",
-      title: t.homeTitle,
-      description: t.homeDescription,
-      images: [ogImage.url],
-    },
+    // Only fields every page shares. Pages set their own title, canonical, and social title/URL
+    // through pageMetadata, so none of them inherit the home page's values.
+    ...sharedSocialMetadata(locale, t.ogImageAlt),
     robots: {
       index: true,
       follow: true,
@@ -65,8 +52,8 @@ export default async function RootLayout({
   params,
 }: Readonly<{ children: React.ReactNode }> & LocaleParams) {
   const locale = await resolveLocale(params);
-  const shouldRenderAnalytics = process.env.VERCEL === "1" || Boolean(process.env.VERCEL_ENV);
-  const shouldRenderSpeedInsights = process.env.VERCEL === "1" || Boolean(process.env.VERCEL_ENV);
+  // The privacy policy promises analytics on the production website only, not previews or local builds.
+  const isProductionDeployment = process.env.VERCEL_ENV === "production";
   const themeBootScript = `(() => {
     try {
       const stored = window.localStorage.getItem("igcse-theme-mode");
@@ -89,8 +76,8 @@ export default async function RootLayout({
       </head>
       <body className="antialiased">
         <LocaleProvider locale={locale}>{children}</LocaleProvider>
-        {shouldRenderAnalytics ? <Analytics /> : null}
-        {shouldRenderSpeedInsights ? <SpeedInsights /> : null}
+        {isProductionDeployment ? <Analytics /> : null}
+        {isProductionDeployment ? <SpeedInsights /> : null}
       </body>
     </html>
   );

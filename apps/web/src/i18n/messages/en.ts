@@ -28,6 +28,16 @@ export const en = {
       "pseudocode for students",
     ],
     ogImageAlt: "Pseudo Build: free online pseudocode editor and compiler",
+    audienceType: "IGCSE, O Level, and A Level Computer Science students and teachers",
+    featureList: [
+      "Pseudocode editor",
+      "Pseudocode compiler",
+      "Browser pseudocode runner",
+      "Line-level compiler diagnostics",
+      "Flowchart generation",
+      "Multi-file workspaces with cloud sync",
+    ],
+    blogName: "Pseudo Build Blog",
     editorTitle: "Editor",
     editorDescription:
       "Open the Pseudo Build editor to write, compile, run, and debug pseudocode with multi-file workspaces.",
@@ -66,6 +76,7 @@ export const en = {
     switchLocaleAria: "切换到中文",
   },
   footer: {
+    slogan: "Free and open-source pseudo code editor and compiler.",
     slogan2: "Build your pseudo code project freely and creatively.",
     product: "Product",
     editor: "Editor",

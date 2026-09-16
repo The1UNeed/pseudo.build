@@ -13,7 +13,7 @@ import {
   ScrollText,
 } from "lucide-react";
 import { PublicHeader } from "@/app/components/PublicHeader";
-import { localePath, localeTags, localeUrl, localizedMetadata, ogImage } from "@/i18n/config";
+import { defaultLocale, localePath, localeTags, localeUrl, pageMetadata } from "@/i18n/config";
 import { getDictionary } from "@/i18n/messages";
 import { resolveLocale, type LocaleParams } from "@/i18n/server";
 import {
@@ -33,19 +33,8 @@ export async function generateMetadata({ params }: LocaleParams): Promise<Metada
   const locale = await resolveLocale(params);
   const t = getDictionary(locale).meta;
   return {
-    title: { absolute: t.homeTitle },
-    description: t.homeDescription,
+    ...pageMetadata(locale, "/", t.homeTitle, t.homeDescription, t.ogImageAlt),
     keywords: t.keywords,
-    alternates: localizedMetadata(locale, "/"),
-    openGraph: {
-      type: "website",
-      locale: locale === "zh" ? "zh_CN" : "en_US",
-      url: localeUrl(locale, "/"),
-      siteName: productName,
-      title: t.homeTitle,
-      description: t.homeDescription,
-      images: [{ ...ogImage, alt: t.ogImageAlt }],
-    },
   };
 }
 
@@ -119,27 +108,20 @@ export default async function LandingPage({ params }: LocaleParams) {
       browserRequirements: "Requires a modern browser with WebAssembly",
       url: localeUrl(locale, "/"),
       inLanguage: Object.values(localeTags),
-      description: locale === "zh" ? dict.meta.homeDescription : productTagline,
+      description: locale === defaultLocale ? productTagline : dict.meta.homeDescription,
       image: `${siteUrl}/icon.png`,
       author: { "@type": "Person", name: authorName },
       publisher: { "@type": "Organization", name: organizationName, url: siteUrl, logo: `${siteUrl}/icon.png` },
       audience: {
         "@type": "EducationalAudience",
         educationalRole: "student",
-        audienceType: "IGCSE, O Level, and A Level Computer Science students and teachers",
+        audienceType: dict.meta.audienceType,
       },
       educationalUse: ["practice", "self-study", "classroom"],
       isAccessibleForFree: true,
       license: "https://www.gnu.org/licenses/gpl-3.0.html",
       keywords: dict.meta.keywords.join(", "),
-      featureList: [
-        "Pseudocode editor",
-        "Pseudocode compiler",
-        "Browser pseudocode runner",
-        "Line-level compiler diagnostics",
-        "Flowchart generation",
-        "Multi-file workspaces with cloud sync",
-      ],
+      featureList: dict.meta.featureList,
       offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
     },
     {
@@ -176,7 +158,7 @@ export default async function LandingPage({ params }: LocaleParams) {
             <span className="text-[var(--accent)]">{t.h1b}</span>
           </h1>
           <p className="site-lede site-reveal site-reveal-3 mt-6 max-w-xl">
-            {locale === "en" ? `${productSlogan} ` : ""}
+            {locale === defaultLocale ? `${productSlogan} ` : ""}
             {t.lede}
           </p>
           <div className="site-reveal site-reveal-4 mt-8 flex flex-wrap gap-3">

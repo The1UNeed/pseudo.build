@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight, BookOpen, CheckCircle2, Code2, FileText, GitBranch, Play } from "lucide-react";
 import { PublicHeader } from "@/app/components/PublicHeader";
-import { localePath, localeTags, localeUrl, localizedMetadata } from "@/i18n/config";
+import { localePath, localeTags, localeUrl, pageMetadata } from "@/i18n/config";
 import { getDictionary } from "@/i18n/messages";
 import { resolveLocale, type LocaleParams } from "@/i18n/server";
 import { productName } from "@/lib/seo-content";
@@ -10,11 +10,7 @@ import { productName } from "@/lib/seo-content";
 export async function generateMetadata({ params }: LocaleParams): Promise<Metadata> {
   const locale = await resolveLocale(params);
   const t = getDictionary(locale).meta;
-  return {
-    title: t.manualTitle,
-    description: t.manualDescription,
-    alternates: localizedMetadata(locale, "/manual"),
-  };
+  return pageMetadata(locale, "/manual", t.manualTitle, t.manualDescription, t.ogImageAlt);
 }
 
 const sectionIcons = [Code2, GitBranch, FileText, BookOpen];

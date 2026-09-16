@@ -1,6 +1,7 @@
 // Simplified Chinese translation of content.en.tsx. Keep section ids identical.
 import Link from "next/link";
 import type { LegalContent } from "@/app/components/LegalPage";
+import { localePath } from "@/i18n/config";
 import { contactEmail, githubUrl, productName } from "@/lib/seo-content";
 
 export const termsZh: LegalContent = {
@@ -34,7 +35,7 @@ export const termsZh: LegalContent = {
             <li>你必须提供准确的注册信息，并妥善保管你的登录凭据。</li>
             <li>你对在你账号下发生的活动负责。</li>
             <li>
-              你可以随时在编辑器的“设置”中删除账号。删除账号会移除你已同步的工作区。
+              你可以随时发送邮件至 <a href={`mailto:${contactEmail}`}>{contactEmail}</a> 要求删除你的账号。Clerk 账号被删除后，我们的数据库会删除该账号对应的已同步工作区和用户记录。
             </li>
             <li>
               创建账号须满足以下年龄要求：在美国和英国至少 13 岁，在中国大陆至少 14 岁，在欧盟成员国须达到当地的数字同意年龄（13 至 16 岁）。年龄较小的学生应在不登录的情况下使用编辑器，或由父母或监护人创建并管理账号。
@@ -67,7 +68,7 @@ export const termsZh: LegalContent = {
           <ul>
             <li>试图访问其他用户的账号或工作区。</li>
             <li>
-              探测、扫描本服务或其服务商，或使其过载，但我们的<Link href="/zh/security">安全政策</Link>允许的情形除外。
+              探测、扫描本服务或其服务商，或使其过载，但我们的<Link href={localePath("zh", "/security")}>安全政策</Link>允许的情形除外。
             </li>
             <li>以人力无法手动产生的频率自动向同步 API 发送请求。</li>
             <li>利用本服务传播垃圾信息、恶意软件或侮辱性内容。</li>
@@ -117,7 +118,7 @@ export const termsZh: LegalContent = {
           <p>
             本服务免费提供，不作任何正常运行时间的保证。功能可能被更改、暂停或移除。在可行的情况下，对于影响已存储数据的变更，我们会至少提前 30 天在 GitHub 仓库中公告。
           </p>
-          <p>请自行保留重要工作的副本。编辑器允许你随时导出文件。</p>
+          <p>请自行保留重要工作的副本，例如将代码从编辑器中复制出来。</p>
         </>
       ),
     },
@@ -143,7 +144,7 @@ export const termsZh: LegalContent = {
       title: "9. 协议的终止",
       content: (
         <p>
-          你可以随时停止使用本服务，并在“设置”中删除账号。如果你违反本条款，或我们停止提供本服务，我们可以终止或暂停你的访问。第 3、6、8 和 10 节在协议终止后继续适用。
+          你可以随时停止使用本服务，并要求我们删除你的账号。如果你违反本条款，或我们停止提供本服务，我们可以终止或暂停你的访问。第 3、6、8 和 10 节在协议终止后继续适用。
         </p>
       ),
     },
@@ -179,7 +180,7 @@ export const termsZh: LegalContent = {
           <a href={`${githubUrl}/issues`} target="_blank" rel="noopener noreferrer">
             GitHub
           </a>{" "}
-          上提交 issue。有关账号或隐私事宜，请参阅<Link href="/zh/privacy">隐私政策</Link>。
+          上提交 issue。有关账号或隐私事宜，请参阅<Link href={localePath("zh", "/privacy")}>隐私政策</Link>。
         </p>
       ),
     },
