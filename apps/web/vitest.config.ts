@@ -14,6 +14,8 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "html"],
+      // Just below measured coverage (2026-09-15). Raise these as tests are added.
+      thresholds: { lines: 74, statements: 73, branches: 64, functions: 68 },
     },
   },
   resolve: {

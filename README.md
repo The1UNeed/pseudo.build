@@ -39,16 +39,22 @@ Every page emits `hreflang` alternates and the sitemap lists both locales.
 
 ## Getting started
 
+Requires Node 22 (see `.nvmrc`, minimum 20.9), pnpm 10 and, for runtime tests, Rust.
+
 ```bash
 pnpm install
-pnpm dev          # http://localhost:3000
-pnpm test         # vitest + cargo tests
-pnpm typecheck
-pnpm lint
+pnpm dev             # http://localhost:3000
+pnpm test            # vitest in every package + cargo tests for the runtime
+pnpm test:coverage   # vitest with per-package coverage thresholds
+pnpm typecheck       # packages, web app and convex/
+pnpm lint            # eslint, zero warnings allowed
 pnpm build
 ```
 
 On localhost the editor saves to browser storage and no account is required.
+
+CI (`.github/workflows/ci.yml`) runs the same checks on every push and pull request, plus
+`cargo clippy -D warnings` and a rebuild of the WebAssembly runtime that must match the committed files.
 
 ### Optional: accounts and cloud sync
 
@@ -62,15 +68,32 @@ On localhost the editor saves to browser storage and no account is required.
 
 ### Rebuilding the WebAssembly runtime
 
+Requires the `wasm32-unknown-unknown` Rust target (the script adds it with rustup) and
+wasm-bindgen CLI 0.2.121, which must match the `wasm-bindgen` version in `Cargo.lock`:
+
 ```bash
-pnpm build:runtime   # requires Rust and wasm-pack
+cargo install wasm-bindgen-cli --version 0.2.121 --locked
+pnpm build:runtime   # writes apps/web/src/runtime/wasm/pkg
 ```
 
 ## Deployment
 
 The site deploys to Vercel with `vercel.json`, which runs `scripts/vercel-build.sh` to deploy
 Convex functions and build the web app in one step. Required Vercel environment variables:
-`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, and `CONVEX_DEPLOY_KEY`.
+`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, and `CONVEX_DEPLOY_KEY`. `.env.example`
+lists every variable and where it is set. Scope the production `CONVEX_DEPLOY_KEY` to the Production
+environment only: if a Preview build sees a `prod:` key, the script skips `convex deploy` and only
+builds the web app.
+
+## Dependency overrides
+
+`pnpm.overrides` in the root `package.json` holds only what a fresh resolve still needs:
+
+| Override | Why |
+| --- | --- |
+| `dompurify` `^3.4.14` | `monaco-editor` 0.55 pins `dompurify` 3.2.7, which has XSS advisories fixed in 3.4.14 (for example GHSA-55q2-fjhq-7xh7). Remove it once Monaco ships a patched version. |
+
+Check with `pnpm audit` before adding or removing an override.
 
 ## Contributing
 

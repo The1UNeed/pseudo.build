@@ -3,6 +3,7 @@
   "version": "0.1.9",
   "private": true,
   "description": "Pseudocode compiler core — tokenizer, parser, semantics, and AST generation.",
+  "license": "GPL-3.0-only",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
@@ -10,16 +11,17 @@
     "./types": "./src/types.ts",
     "./tokenizer": "./src/tokenizer.ts",
     "./parser": "./src/parser.ts",
-    "./semantics": "./src/semantics.ts",
-    "./codegen": "./src/codegen.ts"
+    "./semantics": "./src/semantics.ts"
   },
   "scripts": {
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "typescript": "^5",
-    "vitest": "^4.0.18"
+    "@vitest/coverage-v8": "^4.1.11",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
   }
 }
