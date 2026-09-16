@@ -91,6 +91,37 @@ const KEYWORDS = new Set([
   "RANDOM",
 ]);
 
+const SINGLE_CHAR_TOKENS: Record<string, TokenType> = {
+  ":": "COLON",
+  ",": "COMMA",
+  "(": "LPAREN",
+  ")": "RPAREN",
+  "[": "LBRACKET",
+  "]": "RBRACKET",
+  "+": "PLUS",
+  "-": "MINUS",
+  "*": "STAR",
+  "/": "SLASH",
+  "^": "CARET",
+  "=": "EQ",
+  "<": "LT",
+  ">": "GT",
+};
+
+// Typographic quotes pasted from PDFs and word processors count as plain quotes.
+const DOUBLE_QUOTES = '"“”';
+const SINGLE_QUOTES = "'‘’ꞌ";
+
+function startsToken(char: string): boolean {
+  return (
+    /[A-Za-z0-9 \t\r\n]/.test(char) ||
+    char in SINGLE_CHAR_TOKENS ||
+    DOUBLE_QUOTES.includes(char) ||
+    SINGLE_QUOTES.includes(char) ||
+    char === "←"
+  );
+}
+
 function buildSpan(
   startLine: number,
   startColumn: number,
@@ -100,6 +131,7 @@ function buildSpan(
   return { startLine, startColumn, endLine, endColumn };
 }
 
+/** Diagnostic columns are 1-based and inclusive at both ends. */
 export function tokenize(source: string): { tokens: Token[]; diagnostics: Diagnostic[] } {
   const diagnostics: Diagnostic[] = [];
   const tokens: Token[] = [];
@@ -137,6 +169,19 @@ export function tokenize(source: string): { tokens: Token[]; diagnostics: Diagno
       lexeme,
       keyword,
       span: buildSpan(startLine, startColumn, endLine, endColumn),
+    });
+  };
+
+  const addError = (code: string, message: string, startLine: number, startColumn: number, hint?: string) => {
+    diagnostics.push({
+      code,
+      message,
+      severity: "error",
+      line: startLine,
+      column: startColumn,
+      endLine: line,
+      endColumn: Math.max(startColumn, column - 1),
+      ...(hint ? { hint } : {}),
     });
   };
 
@@ -191,73 +236,57 @@ export function tokenize(source: string): { tokens: Token[]; diagnostics: Diagno
       continue;
     }
 
-    const singleCharTokens: Record<string, TokenType> = {
-      ":": "COLON",
-      ",": "COMMA",
-      "(": "LPAREN",
-      ")": "RPAREN",
-      "[": "LBRACKET",
-      "]": "RBRACKET",
-      "+": "PLUS",
-      "-": "MINUS",
-      "*": "STAR",
-      "/": "SLASH",
-      "^": "CARET",
-      "=": "EQ",
-      "<": "LT",
-      ">": "GT",
-    };
-
-    if (singleCharTokens[char]) {
+    if (SINGLE_CHAR_TOKENS[char]) {
       advance();
-      addToken(singleCharTokens[char], char, startLine, startColumn, line, column - 1);
+      addToken(SINGLE_CHAR_TOKENS[char], char, startLine, startColumn, line, column - 1);
       continue;
     }
 
-    if (char === '"') {
-      let lexeme = advance();
-      while (current() !== '"' && current() !== "\n" && current() !== "\0") {
-        lexeme += advance();
+    const quotes = DOUBLE_QUOTES.includes(char) ? DOUBLE_QUOTES : SINGLE_QUOTES.includes(char) ? SINGLE_QUOTES : null;
+    if (quotes) {
+      const isString = quotes === DOUBLE_QUOTES;
+      const quote = isString ? '"' : "'";
+      advance();
+      let text = "";
+      while (!quotes.includes(current()) && current() !== "\n" && current() !== "\r" && current() !== "\0") {
+        text += advance();
       }
-      if (current() !== '"') {
-        diagnostics.push({
-          code: "SYN008",
-          message: "Unterminated string literal.",
-          severity: "error",
-          line: startLine,
-          column: startColumn,
-          endLine: line,
-          endColumn: column,
-          hint: "String literals must end with a closing double quote.",
-        });
+      if (quotes.includes(current())) {
+        advance();
+        if (!isString && [...text].length !== 1) {
+          addError(
+            "SYN082",
+            "A CHAR literal must contain exactly one character.",
+            startLine,
+            startColumn,
+            'Use double quotes for text, like "abc".',
+          );
+        }
+      } else if (isString) {
+        addError(
+          "SYN008",
+          "Unterminated string literal.",
+          startLine,
+          startColumn,
+          "String literals must end with a closing double quote.",
+        );
       } else {
-        lexeme += advance();
+        addError(
+          "SYN009",
+          "Unterminated character literal.",
+          startLine,
+          startColumn,
+          "Character literals must end with a closing single quote.",
+        );
       }
-      addToken("STRING_LITERAL", lexeme, startLine, startColumn, line, column - 1);
-      continue;
-    }
-
-    if (char === "'" || char === "ꞌ") {
-      const quote = char;
-      let lexeme = advance();
-      while (current() !== quote && current() !== "\n" && current() !== "\0") {
-        lexeme += advance();
-      }
-      if (current() !== quote) {
-        diagnostics.push({
-          code: "SYN009",
-          message: "Unterminated character literal.",
-          severity: "error",
-          line: startLine,
-          column: startColumn,
-          endLine: line,
-          endColumn: column,
-          hint: "Character literals must end with a closing single quote.",
-        });
-      } else {
-        lexeme += advance();
-      }
-      addToken("CHAR_LITERAL", lexeme, startLine, startColumn, line, column - 1);
+      addToken(
+        isString ? "STRING_LITERAL" : "CHAR_LITERAL",
+        `${quote}${text}${quote}`,
+        startLine,
+        startColumn,
+        line,
+        column - 1,
+      );
       continue;
     }
 
@@ -284,19 +313,9 @@ export function tokenize(source: string): { tokens: Token[]; diagnostics: Diagno
         lexeme += advance();
       }
       const upper = lexeme.toUpperCase();
+      // Keywords keep their original lexeme; the parser reports wrong casing
+      // (or a reserved word used as a name) depending on where it appears.
       if (KEYWORDS.has(upper)) {
-        if (lexeme !== upper) {
-          diagnostics.push({
-            code: "SYN001",
-            message: `Keyword \"${upper}\" must be uppercase in strict mode.`,
-            severity: "error",
-            line: startLine,
-            column: startColumn,
-            endLine: line,
-            endColumn: column - 1,
-            hint: `Use \"${upper}\" exactly.`,
-          });
-        }
         addToken("KEYWORD", lexeme, startLine, startColumn, line, column - 1, upper);
       } else {
         addToken("IDENTIFIER", lexeme, startLine, startColumn, line, column - 1);
@@ -304,17 +323,19 @@ export function tokenize(source: string): { tokens: Token[]; diagnostics: Diagno
       continue;
     }
 
-    diagnostics.push({
-      code: "SYN002",
-      message: `Unexpected character \"${char}\".`,
-      severity: "error",
-      line,
-      column,
-      endLine: line,
-      endColumn: column,
-      hint: "Remove the character or replace it with valid IGCSE pseudocode syntax.",
-    });
-    advance();
+    // One diagnostic for a whole run of characters that can't start a token.
+    let run = "";
+    do {
+      run += advance();
+    } while (index < source.length && !startsToken(current()));
+    const shown = run.length > 20 ? `${run.slice(0, 20)}…` : run;
+    addError(
+      "SYN002",
+      run.length === 1 ? `Unexpected character "${run}".` : `Unexpected characters "${shown}".`,
+      startLine,
+      startColumn,
+      "Remove the character or replace it with valid IGCSE pseudocode syntax.",
+    );
   }
 
   addToken("EOF", "", line, column, line, column);

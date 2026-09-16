@@ -136,7 +136,8 @@ class Parser {
     return statements;
   }
 
-  private parseStatement(): StatementNode | null {
+  /** `nested` is true for any statement that is not directly in the main program. */
+  private parseStatement(nested = this.depth > 1): StatementNode | null {
     const token = this.current();
     if (token.type === "KEYWORD") {
       switch (token.keyword) {
@@ -159,9 +160,15 @@ class Parser {
         case "WHILE":
           return this.parseWhileStatement();
         case "PROCEDURE":
-          return this.parseProcedureDefinition();
         case "FUNCTION":
-          return this.parseFunctionDefinition();
+          if (nested) {
+            this.error(
+              token,
+              "SYN078",
+              `${token.keyword} definitions must be at the top level of the program, not inside another block.`,
+            );
+          }
+          return token.keyword === "PROCEDURE" ? this.parseProcedureDefinition() : this.parseFunctionDefinition();
         case "CALL":
           return this.parseCallStatement();
         case "RETURN":
@@ -174,9 +181,14 @@ class Parser {
           return this.parseWriteFileStatement();
         case "CLOSEFILE":
           return this.parseCloseFileStatement();
-        default:
+        default: {
+          const next = this.peek().type;
+          if (this.isMixedCaseKeyword(token) && (next === "ASSIGN" || next === "LBRACKET")) {
+            return this.parseAssignmentStatement();
+          }
           this.error(token, "SYN003", `Unexpected keyword \"${token.keyword}\".`);
           return null;
+        }
       }
     }
 
@@ -197,9 +209,6 @@ class Parser {
 
     this.expectType("COLON", "SYN011", "Expected ':' after identifier in DECLARE statement.");
     const typeNode = this.parseTypeNode();
-    if (!typeNode) {
-      return null;
-    }
 
     return {
       kind: "declare",
@@ -289,21 +298,33 @@ class Parser {
     this.consumeNewlines();
 
     const clauses: Array<{ value: ExpressionNode | null; statement: StatementNode; span: SourceSpan }> = [];
+    let sawOtherwise = false;
 
     while (!this.isAtEnd() && !this.checkKeyword("ENDCASE")) {
-      const clauseStart = this.current().span;
+      const clauseToken = this.current();
+      // A block keyword such as ENDIF or NEXT here means ENDCASE is missing.
+      if (
+        clauseToken.type === "KEYWORD" &&
+        !["OTHERWISE", "TRUE", "FALSE", "NOT"].includes(clauseToken.keyword ?? "") &&
+        !BUILTIN_FUNCTIONS.has(clauseToken.keyword ?? "")
+      ) {
+        break;
+      }
+      if (sawOtherwise) {
+        this.error(clauseToken, "SYN080", "OTHERWISE must be the last clause in a CASE statement.");
+      }
+
+      let value: ExpressionNode | null = null;
       if (this.matchKeyword("OTHERWISE")) {
-        const statement = this.parseStatementAfterCaseColon();
-        if (statement) {
-          clauses.push({ value: null, statement, span: spanFrom(clauseStart, statement.span) });
-        }
+        sawOtherwise = true;
+        this.matchType("COLON");
       } else {
-        const value = this.parseExpression();
+        value = this.parseExpression();
         this.expectType("COLON", "SYN021", "Expected ':' after CASE value.");
-        const statement = this.parseStatementAfterCaseColon();
-        if (statement) {
-          clauses.push({ value, statement, span: spanFrom(clauseStart, statement.span) });
-        }
+      }
+      const statement = this.parseStatementAfterCaseColon();
+      if (statement) {
+        clauses.push({ value, statement, span: spanFrom(clauseToken.span, statement.span) });
       }
       this.consumeNewlines();
     }
@@ -323,16 +344,12 @@ class Parser {
       this.error(this.current(), "SYN023", "CASE clause requires a statement on the same line.");
       return null;
     }
-    return this.parseStatement();
+    return this.parseStatement(true);
   }
 
   private parseForStatement(): StatementNode {
     const start = this.expectKeyword("FOR", "SYN024");
-    const iterator = this.parseIdentifier() ?? {
-      kind: "identifier",
-      name: "InvalidIterator",
-      span: start.span,
-    };
+    const iterator = this.parseIdentifier();
 
     this.expectType("ASSIGN", "SYN025", "Expected assignment operator in FOR statement.");
     const startValue = this.parseExpression();
@@ -350,7 +367,7 @@ class Parser {
 
     if (this.current().type === "IDENTIFIER") {
       const closingIterator = this.advance();
-      if (closingIterator.lexeme.toLowerCase() !== iterator.name.toLowerCase()) {
+      if (iterator && closingIterator.lexeme.toLowerCase() !== iterator.name.toLowerCase()) {
         this.error(
           closingIterator,
           "SYN028",
@@ -362,7 +379,7 @@ class Parser {
     const end = this.previous().span;
     return {
       kind: "for",
-      iterator,
+      iterator: iterator ?? { kind: "identifier", name: "InvalidIterator", span: start.span },
       startValue,
       endValue,
       stepValue,
@@ -405,7 +422,7 @@ class Parser {
 
   private parseProcedureDefinition(): StatementNode {
     const start = this.expectKeyword("PROCEDURE", "SYN034");
-    const nameToken = this.expectType("IDENTIFIER", "SYN035", "Expected procedure identifier.");
+    const nameToken = this.expectIdentifier("SYN035", "Expected procedure identifier.");
     const params = this.parseParameterList();
     this.consumeNewlines();
 
@@ -414,7 +431,7 @@ class Parser {
 
     return {
       kind: "procedureDefinition",
-      name: nameToken.lexeme,
+      name: nameToken?.lexeme ?? "",
       params,
       body,
       span: spanFrom(start.span, end.span),
@@ -423,18 +440,11 @@ class Parser {
 
   private parseFunctionDefinition(): FunctionDefinitionNode {
     const start = this.expectKeyword("FUNCTION", "SYN037");
-    const nameToken = this.expectType("IDENTIFIER", "SYN038", "Expected function identifier.");
+    const nameToken = this.expectIdentifier("SYN038", "Expected function identifier.");
     const params = this.parseParameterList();
 
     this.expectKeyword("RETURNS", "SYN039", "Expected RETURNS in function definition.");
-    const returnTypeToken = this.expectType("KEYWORD", "SYN040", "Expected return data type after RETURNS.");
-    const returnType = BASIC_TYPES.has(returnTypeToken.keyword as BasicTypeName)
-      ? (returnTypeToken.keyword as BasicTypeName)
-      : "INTEGER";
-
-    if (!BASIC_TYPES.has(returnTypeToken.keyword as BasicTypeName)) {
-      this.error(returnTypeToken, "SYN041", "Function return type must be a basic IGCSE data type.");
-    }
+    const returnType = this.parseBasicType("SYN041", "Function return type must be a basic IGCSE data type.").name;
 
     this.consumeNewlines();
     const body = this.parseStatements(new Set(["ENDFUNCTION"]));
@@ -442,7 +452,7 @@ class Parser {
 
     return {
       kind: "functionDefinition",
-      name: nameToken.lexeme,
+      name: nameToken?.lexeme ?? "",
       params,
       returnType,
       body,
@@ -452,7 +462,7 @@ class Parser {
 
   private parseCallStatement(): StatementNode {
     const start = this.expectKeyword("CALL", "SYN043");
-    const nameToken = this.expectType("IDENTIFIER", "SYN044", "Expected procedure identifier after CALL.");
+    const nameToken = this.expectIdentifier("SYN044", "Expected procedure identifier after CALL.");
 
     const args: ExpressionNode[] = [];
     if (this.matchType("LPAREN")) {
@@ -465,10 +475,10 @@ class Parser {
       this.expectType("RPAREN", "SYN045", "Expected ')' after CALL arguments.");
     }
 
-    const endSpan = args.length > 0 ? args[args.length - 1].span : nameToken.span;
+    const endSpan = args.length > 0 ? args[args.length - 1].span : (nameToken ?? start).span;
     return {
       kind: "callStatement",
-      name: nameToken.lexeme,
+      name: nameToken?.lexeme ?? "",
       args,
       span: spanFrom(start.span, endSpan),
     };
@@ -491,7 +501,7 @@ class Parser {
 
     const modeToken = this.expectType("KEYWORD", "SYN049", "Expected READ or WRITE file mode.");
     const mode = modeToken.keyword === "READ" || modeToken.keyword === "WRITE" ? modeToken.keyword : "READ";
-    if (modeToken.keyword !== "READ" && modeToken.keyword !== "WRITE") {
+    if (modeToken.type === "KEYWORD" && mode !== modeToken.keyword) {
       this.error(modeToken, "SYN050", "File mode must be READ or WRITE.");
     }
 
@@ -563,7 +573,7 @@ class Parser {
   }
 
   private parseAssignableTarget(): IdentifierNode | ArrayAccessNode | null {
-    const identifierToken = this.expectType("IDENTIFIER", "SYN057", "Expected identifier.");
+    const identifierToken = this.expectIdentifier("SYN057", "Expected identifier.");
     if (!identifierToken) {
       return null;
     }
@@ -633,41 +643,48 @@ class Parser {
   }
 
   private parseUnary(): ExpressionNode {
-    if (this.matchType("MINUS")) {
-      const operatorToken = this.previous();
-      const operand = this.parseUnary();
-      return {
-        kind: "unary",
-        operator: "-",
-        operand,
-        span: spanFrom(operatorToken.span, operand.span),
-      };
-    }
+    this.enterNesting();
+    try {
+      const operatorToken = this.current();
+      if (this.matchType("MINUS")) {
+        // Unary minus binds looser than ^, so -2 ^ 2 is -(2 ^ 2).
+        const operand = this.parseExpression(BINARY_OPERATORS["^"].precedence);
+        return {
+          kind: "unary",
+          operator: "-",
+          operand,
+          span: spanFrom(operatorToken.span, operand.span),
+        };
+      }
 
-    if (this.matchKeyword("NOT")) {
-      const operatorToken = this.previous();
-      const operand = this.parseUnary();
-      return {
-        kind: "unary",
-        operator: "NOT",
-        operand,
-        span: spanFrom(operatorToken.span, operand.span),
-      };
-    }
+      if (this.matchKeyword("NOT")) {
+        const operand = this.parseUnary();
+        return {
+          kind: "unary",
+          operator: "NOT",
+          operand,
+          span: spanFrom(operatorToken.span, operand.span),
+        };
+      }
 
-    return this.parsePrimary();
+      return this.parsePrimary();
+    } finally {
+      this.depth -= 1;
+    }
   }
 
   private parsePrimary(): ExpressionNode {
     const token = this.current();
 
     if (this.matchType("INTEGER_LITERAL")) {
-      const value = Number.parseInt(token.lexeme, 10);
-      return this.literalNode(token, value, "INTEGER");
+      return this.literalNode(token, this.integerValue(token), "INTEGER");
     }
 
     if (this.matchType("REAL_LITERAL")) {
       const value = Number.parseFloat(token.lexeme);
+      if (!Number.isFinite(value)) {
+        this.error(token, "SYN079", `Number ${token.lexeme} is too large.`);
+      }
       return this.literalNode(token, value, "REAL");
     }
 
@@ -696,13 +713,20 @@ class Parser {
       };
     }
 
+    if (this.isMixedCaseKeyword(token) && this.peek().type !== "LPAREN") {
+      return this.parseIdentifierOrCall(this.matchIdentifier() ?? token);
+    }
+
     if (token.type === "IDENTIFIER" || (token.type === "KEYWORD" && token.keyword && BUILTIN_FUNCTIONS.has(token.keyword))) {
       this.advance();
       return this.parseIdentifierOrCall(token);
     }
 
     this.error(token, "SYN060", "Expected expression.");
-    this.advance();
+    // Leave keywords and line ends for the enclosing statement, so `IF X > THEN` still finds THEN.
+    if (token.type !== "KEYWORD" && token.type !== "NEWLINE") {
+      this.advance();
+    }
     return {
       kind: "literal",
       value: 0,
@@ -751,7 +775,7 @@ class Parser {
     };
   }
 
-  private parseTypeNode(): TypeNode | null {
+  private parseTypeNode(): TypeNode {
     if (this.matchKeyword("ARRAY")) {
       const arrayKeyword = this.previous();
       this.expectType("LBRACKET", "SYN063", "Expected '[' after ARRAY keyword.");
@@ -765,54 +789,60 @@ class Parser {
       this.expectType("RBRACKET", "SYN064", "Expected closing ']' in ARRAY declaration.");
       this.expectKeyword("OF", "SYN065", "Expected OF in ARRAY declaration.");
 
-      const elementTypeToken = this.expectType("KEYWORD", "SYN066", "Expected array element data type.");
-      if (!BASIC_TYPES.has(elementTypeToken.keyword as BasicTypeName)) {
-        this.error(elementTypeToken, "SYN067", "Array element type must be a basic data type.");
-      }
-
+      const elementType = this.parseBasicType("SYN067", "Array element type must be a basic data type.");
       return {
         kind: "array",
-        elementType: BASIC_TYPES.has(elementTypeToken.keyword as BasicTypeName)
-          ? (elementTypeToken.keyword as BasicTypeName)
-          : "INTEGER",
+        elementType: elementType.name,
         dimensions,
-        span: spanFrom(arrayKeyword.span, elementTypeToken.span),
+        span: spanFrom(arrayKeyword.span, elementType.token.span),
       };
     }
 
-    const token = this.expectType("KEYWORD", "SYN068", "Expected data type.");
-    if (!BASIC_TYPES.has(token.keyword as BasicTypeName)) {
-      this.error(token, "SYN069", "Expected one of INTEGER, REAL, CHAR, STRING, BOOLEAN.");
-      return {
-        kind: "basic",
-        name: "INTEGER",
-        span: token.span,
-      };
-    }
+    const { name, token } = this.parseBasicType("SYN069", "Expected one of INTEGER, REAL, CHAR, STRING, BOOLEAN.");
+    return { kind: "basic", name, span: token.span };
+  }
 
-    return {
-      kind: "basic",
-      name: token.keyword as BasicTypeName,
-      span: token.span,
-    };
+  /** Reports a bad type once and skips the bad word, falling back to INTEGER. */
+  private parseBasicType(code: string, message: string): { name: BasicTypeName; token: Token } {
+    const token = this.current();
+    if (token.type === "KEYWORD" && BASIC_TYPES.has(token.keyword as BasicTypeName)) {
+      this.advance();
+      return { name: token.keyword as BasicTypeName, token };
+    }
+    this.error(token, code, message);
+    if (token.type === "IDENTIFIER" || token.type === "KEYWORD") {
+      this.advance();
+    }
+    return { name: "INTEGER", token };
   }
 
   private parseArrayDimension(): { lower: number; upper: number } {
+    const start = this.current();
     const lower = this.parseSignedIntegerLiteral("SYN070", "Expected lower array bound as an integer literal.");
     this.expectType("COLON", "SYN071", "Expected ':' between array bounds.");
     const upper = this.parseSignedIntegerLiteral("SYN072", "Expected upper array bound as an integer literal.");
-    return { lower, upper };
+    if (lower !== null && upper !== null && lower > upper) {
+      this.error(
+        { span: spanFrom(start.span, this.previous().span) },
+        "SYN081",
+        `Array lower bound ${lower} can't be greater than upper bound ${upper}.`,
+      );
+    }
+    return { lower: lower ?? 0, upper: upper ?? 0 };
   }
 
-  private parseSignedIntegerLiteral(code: string, message: string): number {
-    let sign = 1;
-    if (this.matchType("MINUS")) {
-      sign = -1;
-    }
-
+  private parseSignedIntegerLiteral(code: string, message: string): number | null {
+    const sign = this.matchType("MINUS") ? -1 : 1;
     const token = this.expectType("INTEGER_LITERAL", code, message);
+    return token.type === "INTEGER_LITERAL" ? sign * this.integerValue(token) : null;
+  }
+
+  private integerValue(token: Token): number {
     const value = Number.parseInt(token.lexeme, 10);
-    return Number.isNaN(value) ? 0 : sign * value;
+    if (value > Number.MAX_SAFE_INTEGER) {
+      this.error(token, "SYN079", `Integer ${token.lexeme} is too large. The largest INTEGER is ${Number.MAX_SAFE_INTEGER}.`);
+    }
+    return value;
   }
 
   private parseParameterList(): ParameterNode[] {
@@ -823,17 +853,14 @@ class Parser {
 
     if (!this.checkType("RPAREN")) {
       do {
-        const nameToken = this.expectType("IDENTIFIER", "SYN073", "Expected parameter identifier.");
+        const nameToken = this.expectIdentifier("SYN073", "Expected parameter identifier.");
         this.expectType("COLON", "SYN074", "Expected ':' in parameter declaration.");
         const typeNode = this.parseTypeNode();
-        if (!typeNode) {
-          continue;
-        }
 
         params.push({
-          name: nameToken.lexeme,
+          name: nameToken?.lexeme ?? "",
           typeNode,
-          span: spanFrom(nameToken.span, typeNode.span),
+          span: spanFrom((nameToken ?? typeNode).span, typeNode.span),
         });
       } while (this.matchType("COMMA"));
     }
@@ -843,9 +870,8 @@ class Parser {
   }
 
   private parseIdentifier(): IdentifierNode | null {
-    const token = this.matchType("IDENTIFIER") ? this.previous() : null;
+    const token = this.expectIdentifier("SYN076", "Expected identifier.");
     if (!token) {
-      this.error(this.current(), "SYN076", "Expected identifier.");
       return null;
     }
     return {
@@ -853,6 +879,32 @@ class Parser {
       name: token.lexeme,
       span: token.span,
     };
+  }
+
+  /** A keyword written in mixed case, such as `Length`, is usually meant as a name. */
+  private isMixedCaseKeyword(token: Token): boolean {
+    return token.type === "KEYWORD" && token.lexeme !== token.keyword;
+  }
+
+  private matchIdentifier(): Token | null {
+    const token = this.current();
+    if (token.type === "IDENTIFIER") {
+      return this.advance();
+    }
+    if (!this.isMixedCaseKeyword(token)) {
+      return null;
+    }
+    this.error(token, "SYN077", `\"${token.lexeme}\" is a reserved word and can't be used as an identifier.`);
+    this.index += 1;
+    return token;
+  }
+
+  private expectIdentifier(code: string, message: string): Token | null {
+    const token = this.matchIdentifier();
+    if (!token) {
+      this.error(this.current(), code, message);
+    }
+    return token;
   }
 
   private literalNode(token: Token, value: unknown, literalType: BasicTypeName): LiteralNode {
@@ -963,18 +1015,33 @@ class Parser {
     };
   }
 
+  private peek(): Token {
+    return this.tokens[this.index + 1] ?? this.current();
+  }
+
+  /** Consumes the current token. Keywords consumed as keywords must be uppercase. */
   private advance(): Token {
-    if (!this.isAtEnd()) {
-      this.index += 1;
+    if (this.isAtEnd()) {
+      return this.previous();
     }
-    return this.previous();
+    const token = this.current();
+    this.index += 1;
+    if (this.isMixedCaseKeyword(token)) {
+      this.error(
+        token,
+        "SYN001",
+        `Keyword \"${token.keyword}\" must be uppercase in strict mode.`,
+        `Use \"${token.keyword}\" exactly.`,
+      );
+    }
+    return token;
   }
 
   private isAtEnd(): boolean {
     return this.current().type === "EOF";
   }
 
-  private error(token: Token, code: string, message: string) {
+  private error(token: { span: SourceSpan }, code: string, message: string, hint?: string) {
     this.diagnostics.push({
       code,
       message,
@@ -983,6 +1050,7 @@ class Parser {
       column: token.span.startColumn,
       endLine: token.span.endLine,
       endColumn: token.span.endColumn,
+      ...(hint ? { hint } : {}),
     });
   }
 }
