@@ -9,6 +9,9 @@ import {
   UserButton as ClerkUserButton,
   useAuth as useClerkAuth,
 } from "@clerk/nextjs";
+import { zhCN } from "@clerk/localizations";
+import { localePath } from "@/i18n/config";
+import { useDictionary, useLocale } from "@/i18n/context";
 import { getClientAppPlatform, platformUsesCloudSaving } from "@/lib/platform";
 
 const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
@@ -28,26 +31,35 @@ function cloudAuthRequired() {
 }
 
 export function ClerkProvider({ children }: { children: ReactNode }) {
+  const locale = useLocale();
+  const t = useDictionary().auth;
+
   if (!isCloudAuthConfigured()) {
     return <>{children}</>;
   }
 
+  const base = locale === "zh" ? zhCN : ({} as Partial<typeof zhCN>);
+
   return (
     <ClerkProviderBase
       publishableKey={clerkPublishableKey}
-      signInUrl="/login"
-      signUpUrl="/login"
-      signInFallbackRedirectUrl="/app"
-      signUpFallbackRedirectUrl="/app"
-      afterSignOutUrl="/"
+      signInUrl={localePath(locale, "/login")}
+      signUpUrl={localePath(locale, "/login")}
+      signInFallbackRedirectUrl={localePath(locale, "/app")}
+      signUpFallbackRedirectUrl={localePath(locale, "/app")}
+      afterSignOutUrl={localePath(locale, "/")}
       localization={{
+        ...base,
         userButton: {
-          action__manageAccount: "Settings",
+          ...base.userButton,
+          action__manageAccount: t.manageAccount,
         },
         userProfile: {
+          ...base.userProfile,
           navbar: {
-            title: "Settings",
-            description: "Manage your account and application preferences.",
+            ...base.userProfile?.navbar,
+            title: t.settingsTitle,
+            description: t.settingsDescription,
           },
         },
       }}

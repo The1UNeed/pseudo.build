@@ -4,6 +4,7 @@ import React, { memo } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
 import { getNodePrimaryText, getProcessStatements } from './model';
 import { FlowchartNodeData } from './types';
+import { useDictionary } from '@/i18n/context';
 
 // Custom node components for each IGCSE flowchart symbol
 
@@ -75,6 +76,7 @@ TerminatorNode.displayName = 'TerminatorNode';
 
 // Process Node - Rectangle
 export const ProcessNode = memo((props: NodeProps) => {
+  const t = useDictionary().editor;
   const { data, selected } = props;
   const nodeData = data as FlowchartNodeData;
   const statements = getProcessStatements(nodeData);
@@ -94,7 +96,7 @@ export const ProcessNode = memo((props: NodeProps) => {
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3">
             <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--bg)]">
-              Process
+              {t.flowchart.process}
             </span>
             {nodeData.label ? (
               <span className="text-xs font-medium text-[var(--bg)]">{nodeData.label}</span>
@@ -115,7 +117,7 @@ export const ProcessNode = memo((props: NodeProps) => {
           ) : (
             <div className="rounded-lg border border-dashed border-[var(--bg)] px-3 py-4 text-center">
               <span className="block text-xs leading-5 text-[var(--bg)]">
-                Select this block and add lines inside it.
+                {t.flowchart.processEmpty}
               </span>
             </div>
           )}

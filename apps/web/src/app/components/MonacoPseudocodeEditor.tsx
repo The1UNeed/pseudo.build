@@ -5,6 +5,7 @@ import Editor, { BeforeMount, OnMount } from "@monaco-editor/react";
 import "@/lib/monacoLocalLoader";
 import type * as Monaco from "monaco-editor";
 import { LoaderCircle } from "lucide-react";
+import { useDictionary } from "@/i18n/context";
 import { Diagnostic } from "@/compiler/types";
 import { autoCorrectPseudocodeLine } from "@/app/components/pseudocodeAutocorrect";
 import { isAppleTouchDevice } from "@/lib/appleTouch";
@@ -89,42 +90,42 @@ const KEYWORD_LOOKUP = new Map(KEYWORDS.map((keyword) => [keyword.toLowerCase(),
 const ROUTINE_SUGGESTIONS = [
   {
     label: "DIV(Number, Divisor)",
-    detail: "Integer quotient",
+    detail: "integerQuotient",
     insertText: "DIV(${1:Number}, ${2:Divisor})",
   },
   {
     label: "MOD(Number, Divisor)",
-    detail: "Integer remainder",
+    detail: "integerRemainder",
     insertText: "MOD(${1:Number}, ${2:Divisor})",
   },
   {
     label: "LENGTH(Text)",
-    detail: "String length",
+    detail: "stringLength",
     insertText: "LENGTH(${1:Text})",
   },
   {
     label: "LCASE(TextOrChar)",
-    detail: "Lower-case conversion",
+    detail: "lowerCase",
     insertText: "LCASE(${1:TextOrChar})",
   },
   {
     label: "UCASE(TextOrChar)",
-    detail: "Upper-case conversion",
+    detail: "upperCase",
     insertText: "UCASE(${1:TextOrChar})",
   },
   {
     label: "SUBSTRING(Text, Start, Length)",
-    detail: "Part of a string",
+    detail: "substring",
     insertText: "SUBSTRING(${1:Text}, ${2:Start}, ${3:Length})",
   },
   {
     label: "ROUND(Value, Places)",
-    detail: "Round a real value",
+    detail: "round",
     insertText: "ROUND(${1:Value}, ${2:Places})",
   },
   {
     label: "RANDOM()",
-    detail: "Random number from 0 to 1 inclusive",
+    detail: "random",
     insertText: "RANDOM()",
   },
 ] as const;
@@ -143,6 +144,7 @@ export function MonacoPseudocodeEditor({
   theme,
   documentKey,
 }: MonacoPseudocodeEditorProps) {
+  const t = useDictionary().editor;
   const monacoRef = useRef<typeof import("monaco-editor") | null>(null);
   const editorRef = useRef<import("monaco-editor").editor.IStandaloneCodeEditor | null>(null);
   const touchFocusCleanupRef = useRef<(() => void) | null>(null);
@@ -159,7 +161,7 @@ export function MonacoPseudocodeEditor({
       startColumn: diagnostic.column,
       endLineNumber: diagnostic.endLine,
       endColumn: Math.max(diagnostic.endColumn + 1, diagnostic.column + 1),
-      message: `${diagnostic.code}: ${diagnostic.message}${diagnostic.hint ? `\nHint: ${diagnostic.hint}` : ""}`,
+      message: `${diagnostic.code}: ${diagnostic.message}${diagnostic.hint ? `\n${t.diagnostics.hint} ${diagnostic.hint}` : ""}`,
       severity:
         diagnostic.severity === "error"
           ? 8
@@ -167,7 +169,7 @@ export function MonacoPseudocodeEditor({
             ? 4
             : 2,
     }));
-  }, [diagnostics]);
+  }, [diagnostics, t.diagnostics.hint]);
 
   const handleMount: OnMount = (editor, monaco) => {
     monacoRef.current = monaco;
@@ -238,7 +240,7 @@ export function MonacoPseudocodeEditor({
 
           const routineSuggestions = ROUTINE_SUGGESTIONS.map((routine, index) => ({
             label: routine.label,
-            detail: routine.detail,
+            detail: t.autocomplete[routine.detail],
             kind: monaco.languages.CompletionItemKind.Function,
             insertText: routine.insertText,
             insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
@@ -248,8 +250,8 @@ export function MonacoPseudocodeEditor({
 
           const shorthandSuggestions = [
             {
-              label: "PRINT (alias)",
-              detail: "Alias for OUTPUT",
+              label: t.autocomplete.printAlias,
+              detail: t.autocomplete.outputAlias,
               kind: monaco.languages.CompletionItemKind.Snippet,
               insertText: "OUTPUT ${1:\"text\"}",
               insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
@@ -259,7 +261,7 @@ export function MonacoPseudocodeEditor({
             },
             {
               label: "p -> OUTPUT",
-              detail: "Quick starter",
+              detail: t.autocomplete.quickStarter,
               kind: monaco.languages.CompletionItemKind.Snippet,
               insertText: "OUTPUT ${1:\"text\"}",
               insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
@@ -269,7 +271,7 @@ export function MonacoPseudocodeEditor({
             },
             {
               label: "o -> OUTPUT",
-              detail: "Quick starter",
+              detail: t.autocomplete.quickStarter,
               kind: monaco.languages.CompletionItemKind.Snippet,
               insertText: "OUTPUT ${1:\"text\"}",
               insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
@@ -279,7 +281,7 @@ export function MonacoPseudocodeEditor({
             },
             {
               label: "i -> INPUT",
-              detail: "Quick starter",
+              detail: t.autocomplete.quickStarter,
               kind: monaco.languages.CompletionItemKind.Snippet,
               insertText: "INPUT ${1:Variable}",
               insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
@@ -578,7 +580,7 @@ export function MonacoPseudocodeEditor({
       loading={
         <div className="flex h-full min-h-[240px] items-center justify-center bg-[var(--bg)] text-sm font-medium text-[var(--text2)]">
           <LoaderCircle className="mr-2 animate-spin" size={16} />
-          Loading editor
+          {t.loading.editor}
         </div>
       }
     />

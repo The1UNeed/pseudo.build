@@ -1,0 +1,730 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pseudo Build codebase audit, 2026-09-13</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #000; --surface: #111; --surface-2: #1a1a1a; --line: #2a2a2a;
+    --text: #fff; --text-2: #c3c2b7; --muted: #8f8d86;
+    --accent: #3987e5; --track: #262626;
+    --crit: #d03b3b; --high: #ec835a; --med: #fab219; --good: #0ca30c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1080px; margin: 0 auto; padding: 28px 18px 64px; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  h2 { font-size: 20px; margin: 44px 0 10px; padding-top: 14px; border-top: 1px solid var(--line); }
+  h3 { font-size: 16px; margin: 24px 0 8px; }
+  p { margin: 8px 0; }
+  a { color: #86b6ef; }
+  code { font: 13px/1.4 ui-monospace, "SF Mono", Menlo, monospace; background: var(--surface-2); padding: 1px 5px; border-radius: 4px; color: #e6e6e6; overflow-wrap: anywhere; }
+  pre { font: 13px/1.45 ui-monospace, "SF Mono", Menlo, monospace; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; overflow-x: auto; }
+  .meta { color: var(--text-2); margin: 0; }
+  .muted { color: var(--muted); }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+  .verdict { display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center; margin-top: 20px; }
+  .hero { font-size: 56px; font-weight: 650; line-height: 1; }
+  .hero small { font-size: 20px; color: var(--text-2); font-weight: 500; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 14px 0; }
+  .kpi .label { color: var(--text-2); font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  .kpi .value { font-size: 28px; font-weight: 600; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: none; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--text-2); font-weight: 600; font-size: 13px; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .scroll { overflow-x: auto; }
+  .bar { display: flex; align-items: center; gap: 8px; min-width: 160px; }
+  .track { flex: 1; height: 12px; background: var(--track); position: relative; }
+  .fill { height: 12px; background: var(--accent); border-radius: 0 4px 4px 0; }
+  .sev { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; padding: 1px 7px; border-radius: 4px; white-space: nowrap; }
+  .s-crit { background: var(--crit); color: #fff; }
+  .s-high { background: var(--high); color: #000; }
+  .s-med { background: var(--med); color: #000; }
+  .s-low { background: #3a3a3a; color: #fff; }
+  .s-info { background: #222; color: var(--text-2); border: 1px solid var(--line); }
+  .tag { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; white-space: nowrap; }
+  details { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; margin: 10px 0; }
+  details > summary { cursor: pointer; padding: 11px 14px; font-weight: 600; list-style-position: inside; }
+  details[open] > summary { border-bottom: 1px solid var(--line); }
+  .findings { padding: 4px 14px 12px; }
+  .f { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .f:last-child { border-bottom: 0; }
+  .f-head { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: baseline; }
+  .f-id { font: 600 12px ui-monospace, Menlo, monospace; color: var(--text-2); }
+  .f-title { font-weight: 600; }
+  .f-loc { font-size: 13px; color: var(--muted); margin: 2px 0; overflow-wrap: anywhere; }
+  .f p { margin: 4px 0; color: #e8e8e8; }
+  .f .fix { color: var(--text-2); }
+  .f .fix b { color: var(--text); font-weight: 600; }
+  ol.plan li, ul.tight li { margin: 5px 0; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  footer { margin-top: 48px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+  @media (max-width: 700px) {
+    .verdict, .two { grid-template-columns: 1fr; }
+    .hero { font-size: 48px; }
+    th, td { padding: 6px 5px; }
+  }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>Pseudo Build codebase audit</h1>
+  <p class="meta">2026-09-13 · <code>main</code> at <code>88bdf63</code> plus the uncommitted working tree (59 files, +1714/−2619, the <code>[locale]</code> routing migration)</p>
+  <p class="meta">Seven Opus 5 agents split the audit by area. I reproduced or re-read every critical and high finding before including it.</p>
+</header>
+
+<section class="verdict card" aria-labelledby="verdict-h">
+  <div class="hero">4.5<small> / 10</small></div>
+  <div>
+    <h2 id="verdict-h" style="margin:0 0 6px;padding:0;border:0;font-size:18px">Verdict: well structured, but not yet safe with student work</h2>
+    <p>The architecture is sensible and the code is readable. It has a TypeScript compiler, a Rust interpreter compiled to WASM and run in a worker, pure workspace reducers, and a Convex backend that never trusts a client-supplied id. Every local gate passes, and the i18n migration is clean.</p>
+    <p>The score is low because of what happens to user work. A single failed request can overwrite a user's cloud workspace. On a shared browser, one account's code can be uploaded into another account. Up to five minutes of typing lives only in memory. The interpreter gives silently wrong answers on textbook recursion. The compiler rejects a textbook IF/ELSE function. None of these paths is tested, and there is no CI to catch regressions.</p>
+  </div>
+</section>
+
+<h2 id="scores">Scorecard</h2>
+<div class="kpis" role="list" aria-label="Findings by severity">
+  <div class="card kpi" role="listitem"><div class="label">Findings (deduplicated)</div><div class="value">114</div></div>
+  <div class="card kpi" role="listitem"><div class="label"><span class="dot" style="background:var(--crit)"></span>Critical</div><div class="value">2</div></div>
+  <div class="card kpi" role="listitem"><div class="label"><span class="dot" style="background:var(--high)"></span>High</div><div class="value">12</div></div>
+  <div class="card kpi" role="listitem"><div class="label"><span class="dot" style="background:var(--med)"></span>Medium</div><div class="value">43</div></div>
+  <div class="card kpi" role="listitem"><div class="label"><span class="dot" style="background:#6b6b6b"></span>Low / info</div><div class="value">50 / 7</div></div>
+</div>
+
+<div class="scroll">
+<table>
+  <caption class="muted" style="text-align:left;padding-bottom:6px">Area scores out of 10, lowest first. The bar length is the score.</caption>
+  <thead><tr><th scope="col">Area</th><th scope="col">Score</th><th scope="col">Crit / high</th><th scope="col">Why</th></tr></thead>
+  <tbody>
+    <tr><td>Workspace state and sync</td><td><div class="bar" title="4 / 10"><div class="track"><div class="fill" style="width:40%"></div></div><span class="num">4</span></div></td><td class="num">2 / 3</td><td>Careful pure reducers, but failures in load and save lose or leak work.</td></tr>
+    <tr><td>WASM runtime</td><td><div class="bar" title="4 / 10"><div class="track"><div class="fill" style="width:40%"></div></div><span class="num">4</span></div></td><td class="num">0 / 2</td><td>Good sandboxing, but wrong scoping and a recursion crash that bricks Run.</td></tr>
+    <tr><td>Build, tests, tooling</td><td><div class="bar" title="4.5 / 10"><div class="track"><div class="fill" style="width:45%"></div></div><span class="num">4.5</span></div></td><td class="num">0 / 2</td><td>Everything green locally, nothing enforced. No CI, and Convex is outside typecheck.</td></tr>
+    <tr><td>Compiler</td><td><div class="bar" title="5 / 10"><div class="track"><div class="fill" style="width:50%"></div></div><span class="num">5</span></div></td><td class="num">0 / 1</td><td>Robust, fast, never hangs. It rejects valid programs and accepts ones the runtime runs wrongly.</td></tr>
+    <tr><td>Editor UI and flowchart</td><td><div class="bar" title="5 / 10"><div class="track"><div class="fill" style="width:50%"></div></div><span class="num">5</span></div></td><td class="num">0 / 4</td><td>Solid Monaco work. The flowchart rewrites source incorrectly, and keyboard accessibility falls short.</td></tr>
+    <tr><td>Backend and security</td><td><div class="bar" title="7 / 10"><div class="track"><div class="fill" style="width:70%"></div></div><span class="num">7</span></div></td><td class="num">0 / 0</td><td>No IDOR, verified webhook, no secrets in history. Weak CSP, no rate limit, docs overclaim.</td></tr>
+    <tr><td>Public site, i18n, SEO, legal</td><td><div class="bar" title="7 / 10"><div class="track"><div class="fill" style="width:70%"></div></div><span class="num">7</span></div></td><td class="num">0 / 0</td><td>Clean migration with hreflang and full key parity. Metadata leaks, and two legal claims aren't true yet.</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="muted">The plain mean of the area scores is 5.2. I weighted the overall rating down to 4.5 because the two lowest areas decide whether a student's work survives and whether its output is correct. Those matter more for this product than SEO or tooling polish.</p>
+
+<h2 id="plan">What to fix first</h2>
+<p>This order puts user impact first and effort second. Items 1 to 4 are each a small, contained change.</p>
+<ol class="plan">
+  <li><b>Stop the two data-integrity bugs.</b> In <code>loadWorkspace</code>, only upload the local copy after a confirmed <code>200 {workspace:null}</code>, never after an error (WS-1). Key the IndexedDB cache by Clerk user id and clear it on sign-out (WS-2).</li>
+  <li><b>Persist typing quickly.</b> Write to IndexedDB about 500 ms after typing stops, and keep the long timer only for cloud uploads. Flush on <code>pagehide</code> and <code>visibilitychange</code>. Store a dirty flag so a newer local copy isn't replaced by an older cloud one (WS-3, WS-4).</li>
+  <li><b>Fix interpreter scoping and crashes.</b> Make <code>DECLARE</code> insert into the innermost scope (RT-2). Add a call-depth limit, and re-create the worker after any RUN500 or failed load (RT-1, RT-5).</li>
+  <li><b>Fix the compiler's false rejections.</b> Check that every path returns (COMP-1). Accept CHAR where STRING is expected (COMP-3). Use one scope per routine to match the runtime (COMP-2).</li>
+  <li><b>Stop the flowchart from corrupting code.</b> Until round-trips are exact, don't write generated code back automatically. Use the stored <code>loopBodyHandle</code>, and ask before Clear Canvas (UI-1, UI-2, UI-6).</li>
+  <li><b>Add one CI workflow.</b> It should run typecheck (including <code>convex/</code>), lint with zero warnings, vitest, <code>cargo test</code> and clippy, and rebuild the WASM and diff it against the committed binary (BLD-1, BLD-2, BLD-5).</li>
+  <li><b>Turn the audit repros into regression tests.</b> Compile every manual example as a fixture. Run end-to-end compile-then-run tests on the recursion, scoping and nested-loop cases. Add convex-test authorization tests.</li>
+  <li><b>Make published claims true.</b> Add the PIPL consent checkbox or reword the sentence (WEB-2). Verify the deletion setup (WEB-3). Correct the CSP and repo-visibility statements (SEC-7). Commit <code>.env.example</code>, fix the MIT/GPL mismatch, and delete <code>apps/web/scripts/deploy.sh</code>.</li>
+  <li><b>Accessibility pass.</b> Use native <code>&lt;dialog&gt;</code>, <code>inert</code> on hidden views, a roving-tabindex file tree, AA contrast for <code>--text3</code>, and layout chosen by viewport rather than user agent.</li>
+  <li><b>Split the three large files</b> as you touch them: <code>app/page.tsx</code> (2,569 lines), <code>packages/workspace/src/index.ts</code> (2,468) and <code>flowchart/model.ts</code> (1,776).</li>
+</ol>
+
+<h2 id="arch">How the application works</h2>
+<div class="two">
+  <div class="card">
+    <h3 style="margin-top:0">Compile and run</h3>
+    <ol class="tight">
+      <li>Monaco, or the beta React Flow flowchart, edits the pseudocode source.</li>
+      <li><code>compiler.worker.ts</code> runs <code>@pseudobuild/compiler</code>, which tokenizes, parses and checks the source. A 40-entry cache and a stale-request check sit in front of it. It returns diagnostics and the AST as JSON.</li>
+      <li><code>wasmRuntime.worker.ts</code> passes the AST JSON to the Rust tree-walking interpreter in <code>lib.rs</code>. Each run has a budget of 1M steps and a 12 s kill timer.</li>
+      <li>INPUT works by replay. The runtime stops when it runs out of input lines, the UI asks for one, and the whole program re-runs with the lines collected so far.</li>
+    </ol>
+    <p class="muted">The only contract between compiler and runtime is matching string keys. Rust reads untyped <code>serde_json::Value</code> and silently ignores node kinds it doesn't know.</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">Persist and sync</h3>
+    <ol class="tight">
+      <li><code>useWorkspaceSession</code> applies pure reducers from <code>@pseudobuild/workspace</code>.</li>
+      <li><code>storage.ts</code> writes the whole state to IndexedDB under one key, <code>"current"</code>.</li>
+      <li>Signed in: a full <code>PUT /api/workspace</code>. The route verifies the Clerk token, validates the payload, and calls <code>workspaces.saveCurrent</code> with the user's own JWT.</li>
+      <li>Convex stores one 512 KB JSON row per Clerk subject. A Svix-verified webhook deletes the rows on <code>user.deleted</code>.</li>
+    </ol>
+    <p class="muted">Signed out on the website means memory only. Localhost uses IndexedDB. Signed in means cloud. The browser never talks to Convex directly.</p>
+  </div>
+</div>
+<div class="scroll" style="margin-top:12px">
+<table>
+  <thead><tr><th scope="col">Part</th><th scope="col">Stack</th><th scope="col">Size</th><th scope="col">Tests</th></tr></thead>
+  <tbody>
+    <tr><td><code>apps/web</code></td><td>Next.js 16.3.4, React 19.2.3, Clerk, Monaco, React Flow, Tailwind</td><td class="num">~106 src files</td><td class="num">83 (16 files), ~56% lines</td></tr>
+    <tr><td><code>packages/compiler</code></td><td>TypeScript, zero dependencies</td><td class="num">~2.3k lines</td><td class="num">5, ~51% lines</td></tr>
+    <tr><td><code>packages/workspace</code></td><td>TypeScript reducers, layout engine, persistence</td><td class="num">2,468 lines in one file</td><td class="num">19, ~56% lines</td></tr>
+    <tr><td><code>packages/pseudocode-runtime</code></td><td>Rust, wasm-bindgen 0.2.121, committed binary</td><td class="num">1,172 lines</td><td class="num">5 + 4 wasm integration</td></tr>
+    <tr><td><code>convex/</code></td><td>Convex 1.36, Svix</td><td class="num">~500 lines</td><td class="num">0</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="muted">History: 14 commits from 2026-05-04 to 2026-09-06, one main author, 224 tracked files. GPL-3.0.</p>
+
+<h2 id="gates">Quality gates</h2>
+<p>An agent ran each gate, and I re-ran tests and typecheck to confirm.</p>
+<div class="scroll">
+<table>
+  <thead><tr><th scope="col">Command</th><th scope="col">Result</th><th scope="col">Notes</th></tr></thead>
+  <tbody>
+    <tr><td><code>pnpm typecheck</code></td><td>Pass</td><td>Covers the compiler, workspace and web packages only. <code>tsc -p convex</code> fails with 2 errors (<code>process</code> is undefined in <code>auth.config.ts</code> and <code>http.ts</code>).</td></tr>
+    <tr><td><code>pnpm lint</code></td><td>Pass</td><td>0 errors and 6 warnings, 4 of them in generated WASM glue. Only <code>apps/web</code> has a lint script.</td></tr>
+    <tr><td><code>pnpm test</code></td><td>Pass</td><td>107/107 (5 + 19 + 83). Does not run the cargo tests, although the README says it does.</td></tr>
+    <tr><td><code>cargo test</code> / <code>clippy</code></td><td>Pass</td><td>5 tests. 2 clippy warnings (<code>contains_key</code> then <code>insert</code>, identical <code>if</code> branches).</td></tr>
+    <tr><td><code>pnpm build</code></td><td>Pass</td><td>59 static pages. Warns 3 times that <code>metadataBase</code> is missing, and once about a custom Cache-Control on <code>/_next/static</code>.</td></tr>
+    <tr><td><code>pnpm audit --prod</code></td><td>1 moderate</td><td><code>baseline-browser-mapping</code> via next. The full audit finds 32 issues (15 high), all in dev dependencies.</td></tr>
+    <tr><td>WASM reproducibility</td><td>Not reproducible</td><td>A rebuild with the current toolchain differs from the committed binary (306,179 vs 317,505 bytes). The exported API is identical. No pinned toolchain.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="findings">Findings by area</h2>
+<p class="muted">Each finding has an id, a severity, a repo-relative location, the evidence and a fix. <span class="tag">lead verified</span> means I reproduced it or re-read the code myself after the agent reported it. <span class="tag">suspected</span> means the evidence is strong but not reproduced. All other findings were confirmed by the Opus 5 agent that owned the area. I merged findings that more than one agent reported, and adjusted a few severities for consistency.</p>
+
+<details open>
+<summary>Workspace state and sync · 4/10 · 2 critical, 3 high, 5 medium, 5 low</summary>
+<div class="findings">
+
+<div class="f"><div class="f-head"><span class="f-id">WS-1</span><span class="sev s-crit">Critical</span><span class="f-title">A failed cloud load overwrites the user's cloud workspace</span><span class="tag">lead verified</span></div>
+<div class="f-loc">apps/web/src/lib/storage.ts:61-72, 170-185 · convex/workspaces.ts:229-234</div>
+<p><code>loadWorkspaceFromCloud</code> returns <code>null</code> for any non-OK response and for any thrown error. <code>loadWorkspace</code> reads <code>null</code> as "this account has no workspace" and uploads the local IndexedDB copy with <code>saveWorkspaceToCloud</code>. A scratch test showed the damage. When the GET returned 500, the PUT sent a week-old cache. On a new device with a network error, the PUT sent an empty workspace. Convex's <code>readStoredWorkspace</code> also returns <code>null</code> for stored JSON that fails to parse, which triggers the same path.</p>
+<p class="fix"><b>Fix.</b> Upload the local copy only after a confirmed <code>200 {workspace:null}</code>, and only if that copy belongs to the same user. On any other failure, show an error and don't write. Make Convex return a distinct "corrupt" state.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WS-2</span><span class="sev s-crit">Critical</span><span class="f-title">On a shared browser, one account's code is uploaded into another account</span><span class="tag">lead verified</span></div>
+<div class="f-loc">apps/web/src/lib/storage.ts:8, 67-68, 180-181</div>
+<p>Every account shares one IndexedDB key, <code>"current"</code>, and no code path clears it. User A's cloud workspace gets cached locally. A signs out, and user B, who has no cloud workspace, signs in. B's GET returns null, so B loads A's cache and PUTs it with B's token. Scratch output: <code>B sees: USER A PRIVATE CODE | PUT auth: Bearer token-B | PUT body: USER A PRIVATE CODE</code>. A school computer lab is the obvious place this happens.</p>
+<p class="fix"><b>Fix.</b> Key the cache by Clerk user id (<code>current:&lt;userId&gt;</code>), delete it on sign-out, and never upload a cache owned by someone else.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WS-3</span><span class="sev s-high">High</span><span class="f-title">Up to 5 minutes of typing (configurable to 60) exists only in memory</span><span class="tag">lead verified</span></div>
+<div class="f-loc">apps/web/src/app/hooks/useWorkspaceSession.ts:167-177, 255-261 · app/[locale]/app/page.tsx:97, 508</div>
+<p>Typing waits for the autosave timer, whose default is 5 minutes. The effect cleanup clears the timer without saving first. Nothing saves on <code>pagehide</code>, <code>visibilitychange</code> or unmount. The only unload hook is a <code>beforeunload</code> prompt. A crash, a mobile tab eviction or a sign-out loses the edits, even in local mode. This makes RT-1 worse, because the only way to recover from RT-1 is a reload, and a reload throws those edits away.</p>
+<p class="fix"><b>Fix.</b> Write to IndexedDB about 500 ms after typing stops, and use the long interval only for cloud uploads. Flush on cleanup, on <code>pagehide</code>, and when <code>visibilitychange</code> reports hidden.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WS-4</span><span class="sev s-high">High</span><span class="f-title">Newer local work is replaced by the older cloud copy after a failed save</span></div>
+<div class="f-loc">apps/web/src/lib/storage.ts:87-92, 180-181 · useWorkspaceSession.ts:213-216</div>
+<p>When a save reaches IndexedDB but the PUT fails (for example a 413), the next load takes the cloud copy (v1) and overwrites IndexedDB (v2). The UI message "Changes remain on this device" is therefore wrong. If the IndexedDB write fails first (<code>QuotaExceededError</code>), the cloud upload is never tried.</p>
+<p class="fix"><b>Fix.</b> Store a dirty flag and a revision with the local copy. On load, prefer a dirty local copy that is newer, or ask the user. Try the upload even when the local write fails.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WS-5</span><span class="sev s-high">High</span><span class="f-title">Saves can land out of order, and nothing detects conflicts</span></div>
+<div class="f-loc">useWorkspaceSession.ts:196-208 · convex/workspaces.ts:312-318</div>
+<p><code>saveRequestIdRef</code> only protects UI state. The requests themselves are not serialized. In a repro, a slow older save finished after a newer one, and the cloud kept the older state. <code>saveCurrent</code> patches with no revision check, and tabs don't coordinate. Folder toggles, file switches and compiles each trigger a full save, which makes the race likely.</p>
+<p class="fix"><b>Fix.</b> Allow one save in flight per client, and send the latest state when it finishes. Pass <code>expectedRevision</code> to <code>saveCurrent</code> and reject a mismatch. Use BroadcastChannel to tell other tabs to reload.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WS-6</span><span class="sev s-med">Medium</span><span class="f-title">Work written before signing in is discarded at sign-in</span></div>
+<div class="f-loc">apps/web/src/lib/platform.ts:27-40 · useWorkspaceSession.ts:134-165</div>
+<p>Sign-in happens in a Clerk modal, so the page never unloads. When the mode switches from memory to cloud, the hook replaces the guest workspace with the cloud one. "Write code, then sign in to save it" deletes the code.</p>
+<p class="fix"><b>Fix.</b> Import guest documents into the cloud workspace, for example into a "Guest" folder, or confirm with the user first.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WS-7</span><span class="sev s-med">Medium</span><span class="f-title">The editor never loads if IndexedDB is unavailable</span></div>
+<div class="f-loc">useWorkspaceSession.ts:153-165 · storage.ts:41-49</div>
+<p><code>loadWorkspace(...).then(...)</code> has no catch. With blocked storage or a failed database upgrade, the workspace stays <code>null</code> forever and the promise rejection goes unhandled.</p>
+<p class="fix"><b>Fix.</b> Catch the error, fall back to an in-memory empty workspace, and show a notice.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WS-8</span><span class="sev s-med">Medium</span><span class="f-title">The payload limits contradict the advertised limits, so large workspaces never sync</span><span class="tag">lead verified</span></div>
+<div class="f-loc">packages/workspace/src/index.ts:161-170, 2323-2327</div>
+<p>350 documents fail with "too many object fields (3004/3000)", so the advertised <code>maxNodes: 500</code> can't be reached. 3,200 virtual-file lines fail with "too many array items", although the advertised limit is 5,000. The client never checks before sending, so every autosave fails, and WS-4 then loses the work.</p>
+<p class="fix"><b>Fix.</b> Set the generic counters from the domain limits. Validate on the client before saving, and name the limit that was hit.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WS-9</span><span class="sev s-med">Medium</span><span class="f-title">Validation accepts a broken tree that later crashes or hangs rendering</span><span class="tag">lead verified</span></div>
+<div class="f-loc">packages/workspace/src/index.ts:346-352, 762-771</div>
+<p>A node whose parent doesn't exist passes validation, then <code>getNodePath</code> throws. A two-folder parent cycle also passes. Those folders vanish from the tree, and <code>getNodePath</code> on them loops forever. One bad stored record can take down the editor.</p>
+<p class="fix"><b>Fix.</b> Validate id and key equality, parent existence and type, and acyclic parent chains. Move orphans to the root.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WS-15</span><span class="sev s-med">Medium</span><span class="f-title">No tests for the paths that lose data</span></div>
+<div class="f-loc">apps/web/src/lib/storage.test.ts · packages/workspace/src/index.test.ts</div>
+<p><code>useWorkspaceSession</code> has no tests. The storage tests cover only a successful upload, and the workspace tests don't touch layout, panels or broken trees. WS-1 through WS-7 all slipped through as a result.</p>
+<p class="fix"><b>Fix.</b> Turn the audit repros (failed GET, account switch, out-of-order saves, quota error, unavailable IndexedDB) into regression tests.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WS-10</span><span class="sev s-low">Low</span><span class="f-title">Old-layout detection resets a user-built dock layout</span><span class="tag">lead verified, partly</span></div>
+<p><code>index.ts:1329-1335</code> runs inside every <code>normalizeWorkspace</code> call and resets a legitimate docked layout to the default. The agent reported that tabs were lost too, but my re-run kept them. The UI can't reach this yet. <b>Fix.</b> Run the migration once, at load, gated on a stored version.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WS-11</span><span class="sev s-low">Low</span><span class="f-title">Full saves and extra renders on every change</span></div>
+<p>The terminal-output effect depends on the whole <code>workspace</code> and always sets a new object. Selection and layout changes save immediately, with an IndexedDB write plus a PUT of up to 512 KB. <b>Fix.</b> Narrow the effect's dependencies, return the same object when nothing changed, and debounce layout saves.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WS-12</span><span class="sev s-low">Low</span><span class="f-title">About 1k lines of unused docking and virtual-file code</span></div>
+<p>Eleven values returned by the hook and more than ten package exports have no users outside their own files, and <code>VirtualFilesPanel.tsx</code> is imported nowhere. <code>index.ts</code> mixes the file tree, a docking engine and persistence. <b>Fix.</b> Split it into <code>tree.ts</code>, <code>layout.ts</code> and <code>persistence.ts</code>, and delete the unused exports.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WS-13</span><span class="sev s-low">Low</span><span class="f-title">Validation is copied by hand into Convex, and the copies disagree</span></div>
+<p><code>convex/workspaces.ts:4-221</code> duplicates the limits and node checks. The package accepts <code>type: "file"</code>, Convex rejects it, and the uncaught mutation error becomes a 500. <b>Fix.</b> Share one pure validator module, which Convex can import.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WS-14</span><span class="sev s-low">Low</span><span class="f-title">File-name edge cases and all-or-nothing batch operations</span><span class="tag">lead verified</span></div>
+<p><code>createDocument('Main.PSEUDO')</code> gives <code>Main.PSEUDO.pseudo</code>. <code>deleteNodes</code> with one stale id throws and cancels the whole delete. <b>Fix.</b> Compare extensions case-insensitively and skip unknown ids.</p></div>
+
+</div>
+</details>
+
+<details>
+<summary>Backend and security · 7/10 · 0 critical, 0 high, 3 medium, 6 low, 2 info</summary>
+<div class="findings">
+<p class="muted">Backend findings also reported by other areas are listed there: the data-loss load (WS-1), <code>.env.example</code> (BLD-4), the deploy script (BLD-3) and the localized sign-in redirect (WEB-4).</p>
+
+<div class="f"><div class="f-head"><span class="f-id">SEC-2</span><span class="sev s-med">Medium</span><span class="f-title">No rate limit or write quota on workspace sync</span></div>
+<div class="f-loc">convex/workspaces.ts:267-326 · apps/web/src/app/api/workspace/route.ts:95-127</div>
+<p><code>saveCurrent</code> is a public mutation that anyone with a Convex JWT can call directly. It rewrites up to 512 KB per call with no throttle, and any free sign-up gets its own row. A looping script can burn database bandwidth on a hobby plan.</p>
+<p class="fix"><b>Fix.</b> Add <code>@convex-dev/rate-limiter</code> keyed on <code>identity.subject</code> (a few writes per minute), plus an optional per-IP limit in the route.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">SEC-3</span><span class="sev s-med">Medium</span><span class="f-title">The CSP allows inline scripts and wildcard hosts</span><span class="tag">lead verified</span></div>
+<div class="f-loc">apps/web/next.config.ts:7-28</div>
+<p><code>script-src</code> includes <code>'unsafe-inline'</code> plus <code>https://*.clerk.accounts.dev</code>, which covers any Clerk dev instance, including an attacker's. <code>connect-src</code> allows <code>*.convex.cloud</code> and <code>*.convex.site</code>, but the browser never calls Convex. Those wildcards only give injected script somewhere to send stolen data. The security page calls this CSP "restrictive".</p>
+<p class="fix"><b>Fix.</b> Remove the Convex origins, pin Clerk to <code>clerk.pseudo.build</code>, and move <code>script-src</code> to nonces set in <code>proxy.ts</code>.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">SEC-4</span><span class="sev s-med">Medium</span><span class="f-title">Authorization, webhook and deletion paths are untested</span></div>
+<p>There are no Convex tests at all. <code>route.test.ts</code> has 3 tests and none for 401, GET, cross-user isolation, a bad webhook signature or <code>deleteByClerkUserId</code>. <b>Fix.</b> Add convex-test cases: user B can't read A's row, unauthenticated calls throw, a bad signature returns 400, and deletion removes both rows.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">SEC-5</span><span class="sev s-low">Low</span><span class="f-title">Calling Convex directly skips the route's validation</span></div>
+<p><code>saveCurrent</code> stores raw JSON without the route's normalization or virtual-file limits. If the token has no email claim, it stores whatever email the client sends. A caller can only affect their own row. <b>Fix.</b> Validate inside Convex, drop the <code>user</code> argument, and read the claims from the token.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">SEC-6</span><span class="sev s-low">Low</span><span class="f-title">Rows can be recreated after account deletion</span><span class="tag">suspected</span></div>
+<p>An open tab with a still-valid JWT can autosave after the <code>user.deleted</code> webhook runs. <code>saveCurrent</code> then inserts fresh <code>users</code> and <code>workspaces</code> rows, including the email. <b>Fix.</b> Write a tombstone in the webhook and refuse saves for tombstoned subjects.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">SEC-7</span><span class="sev s-low">Low</span><span class="f-title">The security and privacy docs claim more than the code does</span></div>
+<p><code>docs/SECURITY_AUDIT.md</code> says the repo is private (it is public) and cites a migration script that has been deleted. The security page says deploy scripts refuse to run if secret files are present, but only one legacy file is checked. The privacy page promises in-app deletion controls, and there is no workspace delete or export. <b>Fix.</b> Update the text, or build the controls.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">SEC-9</span><span class="sev s-low">Low</span><span class="f-title">Convex errors surface as unstructured 500s</span></div>
+<p><code>route.ts:90, 121</code> calls Convex without try/catch, so the client can't tell auth failures from validation failures. This also feeds WS-1. <b>Fix.</b> Map errors to 400, 401, 413 or 502 with a JSON body.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">SEC-10</span><span class="sev s-low">Low</span><span class="f-title">Leftover sync-secret guard and legacy schema field</span></div>
+<p>Nothing imports <code>convex/workspaceSyncSecret.ts</code> anymore, and git history only ever contained <code>null</code>, so no secret leaked. The build guard, the gitignore entry, <code>workspace: v.optional(v.any())</code> and the legacy read branch are all dead after the "start fresh" commit. <b>Fix.</b> Remove them.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">SEC-12</span><span class="sev s-low">Low</span><span class="f-title">Any path containing a dot skips the locale rewrite</span></div>
+<p><code>proxy.ts:13</code> treats <code>\.[a-z0-9]+$</code> as a static file, so a future slug like <code>/docs/v1.2</code> would return 404. No current slug contains a dot. <b>Fix.</b> Match known static extensions only.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">SEC-13</span><span class="sev s-info">Info</span><span class="f-title"><code>verifyToken</code> runs without <code>authorizedParties</code></span></div>
+<p><code>workspaceAuth.ts:46</code>. Convex's <code>aud=convex</code> check is the real gate, and this was already open in the earlier audit. <b>Fix.</b> Pass <code>authorizedParties</code> or check <code>aud</code>.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">SEC-14</span><span class="sev s-info">Info</span><span class="f-title">Gaps against the Convex guidelines</span></div>
+<p><code>getCurrent</code> has no <code>returns</code> validator and re-parses up to 512 KB on every call. <code>deleteByClerkUserId</code> uses <code>.collect()</code>. Keying on <code>subject</code> is acceptable with a single issuer, but should be documented. <b>Fix.</b> Add return validators and use <code>.unique()</code>.</p></div>
+
+</div>
+</details>
+
+<details open>
+<summary>WASM runtime · 4/10 · 0 critical, 2 high, 4 medium, 6 low, 1 info</summary>
+<div class="findings">
+
+<div class="f"><div class="f-head"><span class="f-id">RT-1</span><span class="sev s-high">High</span><span class="f-title">Recursion around depth 600 crashes the WASM instance, and Run stays broken until reload</span><span class="tag">lead verified</span></div>
+<div class="f-loc">packages/pseudocode-runtime/src/lib.rs:553-580 · apps/web/src/workers/wasmRuntime.worker.ts:154-161 · apps/web/src/runtime/executeRuntime.ts:85-87</div>
+<p>I ran a simple recursive <code>R(N)</code> against the committed binary. Depth 400 printed <code>400</code>. Depth 600 threw <code>RuntimeError: memory access out of bounds</code>, and after that even <code>OUTPUT "alive"</code> failed with the same error in the same instance. The worker catches the trap and posts an ordinary RUN500 result. The runner resolves it like any other result and never resets the worker, so every later run fails. Reloading is the only fix, and a reload throws away unsaved typing (WS-3).</p>
+<p class="fix"><b>Fix.</b> Add a call-depth counter in <code>call_user_routine</code> that raises "Recursion too deep" at around 250. Re-create the worker whenever <code>run_pseudocode</code> throws. Optionally raise the WASM stack size.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">RT-2</span><span class="sev s-high">High</span><span class="f-title">A <code>DECLARE</code> inside a routine overwrites the outer variable, which breaks recursion with locals</span><span class="tag">lead verified</span></div>
+<div class="f-loc">packages/pseudocode-runtime/src/lib.rs:210-230, 593-605</div>
+<p><code>DECLARE</code> goes through <code>assign_name</code>, which writes to the nearest scope that already has the name. A procedure that declares its own <code>X</code> and sets it to 5 changes the global <code>X</code>, and the program prints <code>5</code> instead of <code>1</code>. A recursive <code>Sum(3)</code> with a local variable returns <code>0</code> instead of <code>6</code>. There is no error. The compiler treats these programs as valid.</p>
+<p class="fix"><b>Fix.</b> Make <code>declare</code> and <code>constant</code> insert into <code>scopes.last_mut()</code>, and let only assignment search outer scopes.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">RT-3</span><span class="sev s-med">Medium</span><span class="f-title">Integer arithmetic runs through f64 and saturates without an error</span><span class="tag">lead verified</span></div>
+<div class="f-loc">lib.rs:377-381, 449-451, 896-911</div>
+<p><code>9007199254740992 + 1</code> prints <code>9007199254740992</code>. <code>3037000500 * 3037000500</code> prints i64::MAX. The literal <code>9223372036854775807</code> prints <code>0</code>, because <code>as_i64().unwrap_or(0)</code> falls back to zero.</p>
+<p class="fix"><b>Fix.</b> Use checked i64 operations when both operands are integers, and raise a RUN error on overflow. Reject integer literals outside the safe range in the parser.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">RT-5</span><span class="sev s-med">Medium</span><span class="f-title">One failed WASM load leaves the runtime dead for the session</span><span class="tag">lead verified</span></div>
+<div class="f-loc">wasmRuntime.worker.ts:87-93 · executeRuntime.ts:72-82</div>
+<p><code>runtimeReady</code> keeps the rejected promise forever, and a failed preload only sets the status to "error". Every retry waits on the same rejection.</p>
+<p class="fix"><b>Fix.</b> Clear <code>runtimeReady</code> when it rejects, and call <code>resetWorker()</code> after a preload failure or a RUN500.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">RT-6</span><span class="sev s-med">Medium</span><span class="f-title">Invalid INPUT silently becomes a default value</span><span class="tag">lead verified</span></div>
+<div class="f-loc">lib.rs:880-894</div>
+<p>Entering <code>abc</code> and <code>3.7</code> for two INTEGER inputs prints <code>0 0</code> and reports success. For a BOOLEAN input, anything other than "true" becomes False.</p>
+<p class="fix"><b>Fix.</b> Raise "Expected INTEGER, got 'abc'", or ask for the input again.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">RT-15</span><span class="sev s-med">Medium</span><span class="f-title">Few tests on the risky runtime paths</span></div>
+<p>5 Rust tests, 4 WASM integration tests and 2 runner tests. None cover scoping, recursion, INPUT coercion, overflow, deep nesting, trap recovery, timeout reset or preload failure. <b>Fix.</b> Add Rust tests for RT-2, RT-3 and RT-6, and integration tests for RT-1 and COMP-7.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">RT-7</span><span class="sev s-low">Low</span><span class="f-title">REAL output shows <code>inf</code> and <code>NaN</code>, and <code>4 / 2</code> prints <code>2</code></span><span class="tag">lead verified</span></div>
+<p>Non-finite results don't raise an error, and a whole-number REAL looks exactly like an INTEGER. <b>Fix.</b> Raise a RUN error on non-finite values, and pick one REAL display format.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">RT-8</span><span class="sev s-low">Low</span><span class="f-title">DIV and MOD use Euclidean semantics, and <code>DIV(i64::MIN, -1)</code> traps</span><span class="tag">lead verified</span></div>
+<p><code>DIV(-7,2)</code> gives <code>-4</code> and <code>MOD(7,-2)</code> gives <code>1</code>. That matches neither truncating nor flooring division. The overflow case throws <code>unreachable</code>. <b>Fix.</b> Document one rule (truncation matches most syllabi), and use <code>checked_div</code>.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">RT-10</span><span class="sev s-low">Low</span><span class="f-title">Opening a missing file for READ creates a phantom file</span><span class="tag">lead verified</span></div>
+<p><code>OPENFILE "missing.txt" FOR READ</code> succeeds and saves an empty <code>missing.txt</code> into the workspace. Reading past the end returns <code>""</code>, and there is no <code>EOF()</code>. <b>Fix.</b> Raise an error on a missing READ, and add <code>EOF()</code> to both the compiler and the runtime.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">RT-11</span><span class="sev s-low">Low</span><span class="f-title">RANDOM returns the same sequence on every run</span></div>
+<p>A fixed seed at <code>lib.rs:113</code> probably exists so INPUT replay sees the same values. Games still come out identical every time. <b>Fix.</b> Generate a seed once per Run click and reuse it across the INPUT replays.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">RT-12</span><span class="sev s-low">Low</span><span class="f-title">A leading blank output line disappears</span></div>
+<p><code>useWorkspaceSession.ts:548-560</code> strips a leading <code>\n</code> when it syncs replay output, so <code>OUTPUT ""</code> vanishes. <b>Fix.</b> Return stdout as an array of lines.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">RT-13</span><span class="sev s-low">Low</span><span class="f-title">Unhandled rejection in the runner, and a latent leak of pending runs</span></div>
+<p><code>workerPromise.finally(...)</code> creates a promise nobody handles. <code>resetWorker()</code> doesn't reject the other pending entries, whose timers can later kill a newer worker. The leak can't happen today because Run is disabled while a run is active. <b>Fix.</b> Add <code>.catch(() =&gt; {})</code>, and reject everything pending on reset.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">RT-16</span><span class="sev s-info">Info</span><span class="f-title">The compiler-runtime contract is implicit</span></div>
+<p>The runtime turns unknown statement kinds into no-ops and unknown expressions into <code>Null</code>. Arrays are copied when passed as arguments. There is no <code>&amp;</code>, <code>BYREF</code> or <code>APPEND</code>. <b>Fix.</b> Add a version field or a shared schema, error on unknown kinds, and list the missing syllabus features.</p></div>
+
+</div>
+</details>
+
+<details open>
+<summary>Compiler · 5/10 · 0 critical, 1 high, 6 medium, 8 low</summary>
+<div class="findings">
+
+<div class="f"><div class="f-head"><span class="f-id">COMP-1</span><span class="sev s-high">High</span><span class="f-title">A function that returns from both IF branches is rejected</span><span class="tag">lead verified</span></div>
+<div class="f-loc">packages/compiler/src/semantics.ts:193, 324-327, 342</div>
+<pre>FUNCTION Max(A : INTEGER, B : INTEGER) RETURNS INTEGER
+    IF A &gt; B
+      THEN
+        RETURN A
+      ELSE
+        RETURN B
+    ENDIF
+ENDFUNCTION</pre>
+<p>This fails with <code>SEM011 Function "Max" must contain a RETURN statement</code>, because <code>sawReturn</code> only looks at top-level statements. It is one of the most common exam patterns, and students can't run it.</p>
+<p class="fix"><b>Fix.</b> Real all-paths-return analysis. IF counts when both branches return, and CASE counts when it has OTHERWISE and every clause returns.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">COMP-2</span><span class="sev s-med">Medium</span><span class="f-title">The compiler and the runtime disagree on scope</span></div>
+<div class="f-loc">semantics.ts:245-298 vs lib.rs:593-617</div>
+<p>The compiler gives every block its own scope, while the runtime has one scope per routine. A <code>DECLARE X : STRING</code> inside an IF overwrites an outer INTEGER <code>X</code> at runtime, and the program prints <code>1</code> where <code>6</code> is expected. A variable declared inside an IF and used after it is rejected, even though it would run.</p>
+<p class="fix"><b>Fix.</b> Use one scope per routine in semantics, which is the Cambridge convention, and report a redeclaration as SEM002.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">COMP-3</span><span class="sev s-med">Medium</span><span class="f-title">Examples copied from the manual fail to compile</span><span class="tag">lead verified</span></div>
+<div class="f-loc">semantics.ts:57-61, 94-118 · manual/manualContent.en.ts:78-88</div>
+<p><code>OUTPUT LCASE('W')</code>, taken from the manual, fails with <code>SEM018 ... must be STRING, got CHAR</code>. <code>Value &lt;- ROUND(RANDOM() * 6, 0)</code> assigned to an INTEGER fails with SEM003. The manual also says CONSTANT values must be literals, but <code>CONSTANT Max &lt;- 2 + 3</code> compiles.</p>
+<p class="fix"><b>Fix.</b> Let CHAR widen to STRING. Decide what type ROUND returns and make the code and the manual agree. Enforce literal-only constants.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">COMP-4</span><span class="sev s-med">Medium</span><span class="f-title">Programs that type-check but fail or misbehave at runtime</span></div>
+<div class="f-loc">semantics.ts:250-278, 431-482, 541-551 · parser.ts:665</div>
+<ul class="tight">
+  <li>A REAL FOR step compiles, then fails at runtime with <code>FOR STEP cannot be zero</code>. This merges RT-9.</li>
+  <li>A function name used as a value compiles, then fails with "Undeclared identifier".</li>
+  <li><code>IF "abc" &gt; 5</code> compiles and silently takes the ELSE branch.</li>
+  <li>CASE labels aren't type-checked, and duplicate or misplaced OTHERWISE clauses compile.</li>
+  <li><code>ARRAY[10:1]</code>, <code>'ab'</code> as a CHAR, and a CONSTANT used as a loop variable all compile.</li>
+</ul>
+<p class="fix"><b>Fix.</b> Require INTEGER FOR bounds and steps, check symbol kinds, type-check comparisons and CASE labels, and validate array bounds and CHAR length.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">COMP-5</span><span class="sev s-med">Medium</span><span class="f-title">One mistake produces a cascade of misleading diagnostics</span></div>
+<div class="f-loc">index.ts:29-32 · parser.ts:430-437, 704-705, 783-791</div>
+<p><code>DECLARE X : Foo</code> yields five errors. <code>FOR &lt;- 1 TO 3</code> reports an undeclared iterator called "InvalidIterator". <code>IF X &gt; THEN</code> blames the next line. Semantic analysis still runs on ASTs full of error placeholders. For a teaching tool this is the part students see most.</p>
+<p class="fix"><b>Fix.</b> Skip semantic errors when there are syntax errors, treat UNKNOWN as compatible, advance past a bad type token, and don't consume keywords in <code>parsePrimary</code>.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">COMP-6</span><span class="sev s-med">Medium</span><span class="f-title">No cap on diagnostics, so pasted junk can freeze the tab</span></div>
+<p>255 KB of <code>@</code> produced 261,120 diagnostics, a 55 MB result posted to the main thread for Monaco markers. <b>Fix.</b> Merge runs of bad characters into one diagnostic, and cap the total at about 200.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">COMP-14</span><span class="sev s-med">Medium</span><span class="f-title">Five tests for the whole compiler</span></div>
+<p>Semantics has 40.8% line coverage. There are no tokenizer, precedence, CASE, RETURN-path, diagnostic-position or limit tests, and no fixtures from the manual, which would have caught COMP-1 and COMP-3. <b>Fix.</b> A table-driven suite that compiles every manual example, plus end-to-end compile-and-run checks.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">COMP-7</span><span class="sev s-low">Low</span><span class="f-title">The runtime rejects ASTs the compiler accepts, because of serde's depth limit</span><span class="tag">lead verified</span></div>
+<p>serde_json allows 128 levels of nesting, and the parser allows 200. A 130-term <code>1+1+...</code> expression compiles, then fails with <code>RUN500 Invalid AST JSON: recursion limit exceeded</code>. This merges RT-4. <b>Fix.</b> Limit AST depth in the compiler to what the runtime accepts, or use <code>serde_stacker</code>.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">COMP-8</span><span class="sev s-low">Low</span><span class="f-title">Deep unary chains bypass the nesting guard</span></div>
+<p><code>parseUnary</code> (<code>parser.ts:635-659</code>) recurses without <code>enterNesting</code>. 100k minus signs overflow the stack. The callers catch the error, so the result is a bad message rather than a crash. <b>Fix.</b> Parse prefix operators in a loop.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">COMP-9</span><span class="sev s-low">Low</span><span class="f-title">Nested routine definitions parse but can never be called</span></div>
+<p>Only top-level routines are hoisted, so a PROCEDURE defined inside an IF gives "Unknown procedure". <b>Fix.</b> Report a syntax error for routines that aren't at top level.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">COMP-10</span><span class="sev s-low">Low</span><span class="f-title"><code>OTHERWISE :</code> and multi-line CASE clauses are rejected</span></div>
+<p>Both forms appear in Cambridge teaching material (<code>parser.ts:295-327</code>). <b>Fix.</b> Accept an optional colon after OTHERWISE, and allow clause bodies to span lines.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">COMP-11</span><span class="sev s-low">Low</span><span class="f-title">Misleading message when an identifier matches a keyword</span></div>
+<p><code>DECLARE Length : INTEGER</code> reports that the keyword LENGTH must be uppercase, followed by cascading errors. <b>Fix.</b> Say that <code>Length</code> is a reserved word.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">COMP-12</span><span class="sev s-low">Low</span><span class="f-title">Tokenizer edge cases</span></div>
+<p><code>IF A&lt;-1</code> is read as an assignment, and typographic quotes pasted from a PDF are rejected. <code>MAX_SOURCE_BYTES</code> counts UTF-16 units instead of bytes. End columns are sometimes exclusive and sometimes inclusive. <b>Fix.</b> Handle each case individually.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">COMP-13</span><span class="sev s-low">Low</span><span class="f-title"><code>-2 ^ 2</code> evaluates to 4</span></div>
+<p>Unary minus binds tighter than <code>^</code>. All other precedence and associativity checks passed. <b>Fix.</b> Give unary minus lower precedence than <code>^</code>.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">COMP-15</span><span class="sev s-low">Low</span><span class="f-title">An export points at a file that doesn't exist, plus dead code</span></div>
+<p><code>package.json</code> exports <code>./codegen</code> from <code>src/codegen.ts</code>, which is missing. <code>symbolTypes</code> and the signature maps are computed and then thrown away. <code>validateCallArguments</code> is duplicated, and both branches at <code>index.ts:61-73</code> are identical. This merges BLD-13. <b>Fix.</b> Delete them.</p></div>
+
+</div>
+</details>
+
+<details open>
+<summary>Editor UI and flowchart · 5/10 · 0 critical, 4 high, 12 medium, 6 low, 1 info</summary>
+<div class="findings">
+
+<div class="f"><div class="f-head"><span class="f-id">UI-1</span><span class="sev s-high">High</span><span class="f-title">Converting a flowchart with nested loops back to code changes the program's logic</span><span class="tag">lead verified</span></div>
+<div class="f-loc">apps/web/src/app/components/flowchart/model.ts:1502-1534, 1641-1645</div>
+<p>A WHILE nested inside another WHILE comes back as <code>IF J &lt; 2 THEN J &lt;- J + 1 ELSE I &lt;- I + 1 ENDIF</code>. A nested FOR comes back as <code>IF J &lt;- 1 TO 2 THEN</code>, which doesn't parse. Loop detection needs exactly one branch to reach the decision node again. The inner loop's exit branch reaches it too, through the outer loop, so both branches count. The importer stores <code>controlKind</code> and <code>loopBodyHandle</code>, but the code generator never reads them.</p>
+<p class="fix"><b>Fix.</b> Treat <code>loopBodyHandle</code> as authoritative when <code>controlKind</code> is set, limit the reachability search to the active path, and add round-trip tests for nested loops.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">UI-2</span><span class="sev s-high">High</span><span class="f-title">Any flowchart edit rewrites the whole document and loses content</span><span class="tag">lead verified</span></div>
+<div class="f-loc">model.ts:398-401, 438, 498-513, 537-560</div>
+<p>In the round-trip repro:</p>
+<ul class="tight">
+  <li>Every comment disappears.</li>
+  <li><code>OUTPUT 5.0</code> becomes <code>OUTPUT 5</code>.</li>
+  <li><code>"C:\temp"</code> becomes <code>"C:\\temp"</code>, because <code>quoteLiteral</code> adds escapes the tokenizer doesn't support.</li>
+  <li>An outer IF without an ELSE gains an empty <code>ELSE</code>.</li>
+  <li><code>// Start</code> and <code>// End</code> lines are added.</li>
+</ul>
+<p>A small flowchart edit therefore overwrites the student's source.</p>
+<p class="fix"><b>Fix.</b> Keep literal lexemes and source spans, only look for ELSE among direct children, and replace only the parts of the source whose nodes changed.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">UI-3</span><span class="sev s-high">High</span><span class="f-title">Dialogs don't trap or restore focus, and most ignore Escape</span></div>
+<div class="f-loc">apps/web/src/app/[locale]/app/page.tsx:365-376 and the dialogs at 1258, 1863, 1937, 1973, 2397, 2452, 2527</div>
+<p>Escape only closes three of the surfaces. The rename, delete, settings and sign-in dialogs ignore it. None of the dialogs trap Tab or return focus when they close, and the delete dialog never takes focus at all. A keyboard user can tab behind an <code>aria-modal</code> dialog.</p>
+<p class="fix"><b>Fix.</b> One shared component built on <code>&lt;dialog&gt;.showModal()</code>, which provides focus trapping, Escape and an inert background.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">UI-4</span><span class="sev s-high">High</span><span class="f-title">Android phones and narrow windows get the desktop layout</span><span class="tag">lead verified</span></div>
+<div class="f-loc">page.tsx:406-408 · apps/web/src/lib/appleTouch.ts</div>
+<p>The touch layout turns on only when <code>isAppleTouchDevice(navigator)</code> is true, and the app has no CSS breakpoints. On a 390 px Android screen the 260 px sidebar and the tab bar leave almost no room to edit.</p>
+<p class="fix"><b>Fix.</b> Choose the layout from viewport width plus <code>(pointer: coarse)</code>. Keep the Apple check only for the Monaco input workarounds.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">UI-5</span><span class="sev s-med">Medium</span><span class="f-title">The quote-key handler breaks ä on German keyboards and interrupts Chinese IME input</span><span class="tag">lead verified</span></div>
+<div class="f-loc">apps/web/src/app/components/MonacoPseudocodeEditor.tsx:357-368</div>
+<p><code>browserCode === "Quote"</code> also matches the ä key on a German layout. During IME composition the key is <code>"Process"</code>. In both cases the handler calls <code>preventDefault()</code>, and there is no <code>isComposing</code> check. This matters now that the site has a zh locale.</p>
+<p class="fix"><b>Fix.</b> Drop the <code>code</code> fallback, and return early when the event is composing.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">UI-6</span><span class="sev s-med">Medium</span><span class="f-title">Clear Canvas empties the document with no confirmation</span></div>
+<p><code>FlowchartEditor.tsx:349-352</code> publishes <code>""</code>, which updates the document source, and the next autosave persists it. <b>Fix.</b> Confirm first, or clear only the canvas until the user presses Generate Code.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">UI-7</span><span class="sev s-med">Medium</span><span class="f-title">Renaming the Start terminator turns it into End</span></div>
+<p><code>model.ts:1347-1361</code> decides start versus end with <code>label.includes("start")</code>. Relabelling it "Begin" or "开始" generates <code>// End</code> twice. <b>Fix.</b> Store <code>terminatorKind</code> on the node.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">UI-8</span><span class="sev s-med">Medium</span><span class="f-title">A hidden flowchart and the whole page recompute on every keystroke</span></div>
+<p>The flowchart stays mounted while hidden, and every source change runs code generation, a parse and a layout. Each keystroke re-renders all 2.6k lines of the page and an unmemoized sidebar. <code>diagnostics={... : []}</code> passes a new array each render, which resets Monaco markers. <b>Fix.</b> Pause the flowchart while hidden or use <code>useDeferredValue</code>, memoize the sidebar, and share one empty diagnostics constant.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">UI-9</span><span class="sev s-med">Medium</span><span class="f-title">The file tree and context menu can't be used with a keyboard</span></div>
+<p><code>WorkspaceSidebar.tsx</code> has no <code>tree</code> or <code>treeitem</code> roles and no arrow-key navigation. No key opens the context menu, and the <code>role="menu"</code> has no menu items and never takes focus. <b>Fix.</b> A roving-tabindex tree, plus Shift+F10 to open the menu and focus it.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">UI-10</span><span class="sev s-med">Medium</span><span class="f-title">Editor tabs aren't focusable, and their close buttons are invisible when focused</span></div>
+<p>Tabs are <code>&lt;div onClick&gt;</code> elements (<code>page.tsx:2208-2243</code>). The close button uses <code>group-hover:opacity-100</code> with no focus-visible style. <b>Fix.</b> Add <code>tablist</code> and <code>tab</code> roles, render buttons, and add <code>focus-visible:opacity-100</code>.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">UI-11</span><span class="sev s-med">Medium</span><span class="f-title">The hidden view is <code>aria-hidden</code> but still focusable</span></div>
+<p><code>page.tsx:2179-2199</code>. Tab still reaches Monaco or the flowchart inputs inside the hidden view. <b>Fix.</b> Use <code>inert</code>.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">UI-12</span><span class="sev s-med">Medium</span><span class="f-title">Text contrast falls below WCAG AA in both themes</span></div>
+<p>In the dark theme, <code>--text3</code> <code>#636366</code> is 2.84:1 on the background and 2.33:1 on surfaces, and the white play icon on green is 2.02:1. In the light theme, <code>--text3</code> <code>#9CA3AF</code> is 2.54:1 and Monaco line numbers are 1.56:1 (<code>globals.css:136-143, 217-221</code>). <b>Fix.</b> Raise <code>--text3</code> to at least 4.5:1, and use dark ink on bright fills.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">UI-13</span><span class="sev s-med">Medium</span><span class="f-title">The app ignores reduced motion, and terminal output isn't announced</span></div>
+<p>The <code>prefers-reduced-motion</code> rule is scoped to <code>.site *</code>, so the 500 ms view slide ignores it. The terminal <code>&lt;pre&gt;</code> has no live region. <b>Fix.</b> Add <code>motion-reduce:</code> variants, and <code>role="log" aria-live="polite"</code> on the terminal.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">UI-14</span><span class="sev s-med">Medium</span><span class="f-title">The flowchart palette works only with mouse drag</span></div>
+<p>There is no way to add a block with the keyboard or touch. The toggle has no <code>type</code> or <code>aria-label</code>. Touch settings show a flowchart switch that does nothing. <b>Fix.</b> Clicking or pressing Enter on a palette item adds the block at the viewport center. Hide the switch on touch devices.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">UI-15</span><span class="sev s-med">Medium</span><span class="f-title"><code>page.tsx</code> is one component doing about ten jobs</span></div>
+<p>It has about 25 <code>useState</code>, 14 <code>useEffect</code> and 12 render closures across three layouts. The rename, delete and settings dialogs, the notice bar, the terminal input and the Run button are each duplicated, about 400 lines in total. <b>Fix.</b></p>
+<ul class="tight">
+  <li>Hooks: <code>usePersistedPreference</code>, <code>useResizableSize</code>.</li>
+  <li>A <code>dialogs/</code> folder.</li>
+  <li><code>TerminalPanel</code> and <code>EditorTabs</code>.</li>
+  <li>Three layout components fed by one <code>useEditorController()</code>.</li>
+</ul>
+<p>The target is under 300 lines.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">UI-16</span><span class="sev s-med">Medium</span><span class="f-title"><code>model.ts</code> has two importers and copy-pasted layout code</span></div>
+<p>The WHILE and FOR layouts are near-identical, and a regex-based fallback repeats them. The 8 tests cover only single-level structures. <b>Fix.</b> Split into <code>palette</code>, <code>expression</code>, <code>import</code> (one intermediate representation), <code>layout</code> and <code>emit</code> modules. Add a property test that checks the AST survives parse, build, generate and parse again.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">UI-17</span><span class="sev s-low">Low</span><span class="f-title">Completion details keep the first locale used</span></div>
+<p>The completion provider registers once per module and captures the first mount's <code>t</code>, so switching locale on the client doesn't update it. <b>Fix.</b> Read the dictionary through a ref, or register the provider per mount.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">UI-18</span><span class="sev s-low">Low</span><span class="f-title">The <code>&lt;-</code> to <code>←</code> shortcut breaks comparisons with negative numbers</span></div>
+<p>Typing <code>IF Temp&lt;-5 THEN</code> becomes <code>IF Temp←5 THEN</code>, which is a syntax error. <b>Fix.</b> Convert only at the start of a statement.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">UI-19</span><span class="sev s-low">Low</span><span class="f-title">Markers may be missing after a tab switch</span><span class="tag">suspected</span></div>
+<p><code>handleMount</code> never sets markers, and the editor remounts for each document. <b>Fix.</b> Apply markers from a ref inside <code>handleMount</code>.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">UI-20</span><span class="sev s-low">Low</span><span class="f-title">Hardcoded English in the editor</span></div>
+<p>The raw theme value is shown as text. Flowchart node labels and placeholders ("Input", "Condition", "Yes", "No", "Start") are hardcoded. Severity labels and compiler messages are English only. <b>Fix.</b> Route display text through <code>t</code>.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">UI-21</span><span class="sev s-low">Low</span><span class="f-title">Signed-in users can't change language from the app</span></div>
+<p>The settings button appears only when signed out, and the Clerk <code>UserButton</code> pages don't include the locale switcher. <b>Fix.</b> Always show settings.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">UI-22</span><span class="sev s-low">Low</span><span class="f-title">Dead components and CSS</span><span class="tag">lead verified</span></div>
+<p><code>DiagnosticsPanel.tsx</code> and <code>VirtualFilesPanel.tsx</code> are imported nowhere, and their dictionary keys are dead too. <code>.manual-card-enter</code> is unused. <b>Fix.</b> Delete them, or wire them in.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">UI-23</span><span class="sev s-info">Info</span><span class="f-title">Nothing tests flowchart sync or page accessibility</span></div>
+<p>The component tests pass (32), but the public page test mocks <code>FlowchartEditor</code>. <b>Fix.</b> Add sync tests (edit publishes, Clear Canvas) and React Testing Library checks for dialog focus and Escape.</p></div>
+
+</div>
+</details>
+
+<details>
+<summary>Public site, i18n, SEO, legal · 7/10 · 0 critical, 0 high, 4 medium, 8 low, 2 info</summary>
+<div class="findings">
+
+<div class="f"><div class="f-head"><span class="f-id">WEB-1</span><span class="sev s-med">Medium</span><span class="f-title">Layout Open Graph and Twitter metadata leaks onto most pages</span><span class="tag">lead verified</span></div>
+<div class="f-loc">apps/web/src/app/[locale]/layout.tsx:32-47 · (public)/docs, blog, manual, privacy, terms, security page.tsx</div>
+<p>The layout sets <code>openGraph.url</code> to the home URL and <code>openGraph.title</code> and <code>twitter.title</code> to the home title. Child pages override only <code>title</code>, <code>description</code> and <code>alternates</code>, and Next inherits the parent <code>openGraph</code> object whole. A shared /docs or /privacy link previews as the homepage, and its <code>og:url</code> contradicts the canonical.</p>
+<p class="fix"><b>Fix.</b> Keep only <code>siteName</code>, <code>images</code> and <code>metadataBase</code> in the layout, and add a <code>pageMetadata(locale, path, title, description)</code> helper for every page.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WEB-2</span><span class="sev s-med">Medium</span><span class="f-title">The privacy policy describes a separate consent step that doesn't exist</span><span class="tag">lead verified</span></div>
+<div class="f-loc">(public)/privacy/content.en.tsx:213 and the zh equivalent</div>
+<p>It says "We ask for this consent separately when you create an account", which is the separate consent China's PIPL requires for cross-border transfer. The login page only shows passive "you agree" text, and there is no checkbox anywhere. <code>docs/LEGAL_REVIEW.md</code> itself lists the checkbox as a to-do.</p>
+<p class="fix"><b>Fix.</b> Turn on Clerk's legal-consent checkbox for sign-up before relying on this sentence, or reword it.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WEB-3</span><span class="sev s-med">Medium</span><span class="f-title">The promise to delete accounts depends on setup outside the repo</span><span class="tag">suspected</span></div>
+<p>Deletion works only if the Clerk dashboard allows self-deletion and <code>CLERK_WEBHOOK_SECRET</code> is set in Convex. Without the secret the webhook returns 503, and the email, name and workspace rows stay. There is no in-app delete and no cleanup of orphaned rows. <b>Fix.</b> Check both settings, and add a signed-in "delete my cloud data" mutation.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WEB-4</span><span class="sev s-med">Medium</span><span class="f-title">Sign-in buttons send Chinese users to the English editor</span><span class="tag">lead verified</span></div>
+<div class="f-loc">apps/web/src/lib/auth-components.tsx:129, 144</div>
+<p><code>fallbackRedirectUrl="/app"</code> on the buttons overrides the provider's localized <code>signInFallbackRedirectUrl</code>. Both the security and i18n agents reported it.</p>
+<p class="fix"><b>Fix.</b> Remove the prop, or use <code>localePath(locale, "/app")</code>.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WEB-5</span><span class="sev s-low">Low</span><span class="f-title">Privacy text implies cloud sync is a separate opt-in</span></div>
+<p>The text says "unless you sign in and turn on cloud sync". In fact, signing in switches the app to cloud mode and autosave uploads. <b>Fix.</b> Say that signing in turns on sync.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WEB-6</span><span class="sev s-low">Low</span><span class="f-title">Analytics also load on preview deployments</span></div>
+<p>The layout loads analytics whenever <code>VERCEL === "1"</code> or <code>VERCEL_ENV</code> is set. The policy says production only. <b>Fix.</b> Load analytics only when <code>VERCEL_ENV === "production"</code>.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WEB-7</span><span class="sev s-low">Low</span><span class="f-title">English strings on zh pages</span></div>
+<p>Footer slogan, OG image text, JSON-LD <code>featureList</code> and <code>audienceType</code>, the blog JSON-LD name and <code>manifest.ts</code>. <b>Fix.</b> Move them into the dictionaries.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WEB-8</span><span class="sev s-low">Low</span><span class="f-title">Dates render as raw ISO strings</span></div>
+<p>This happens on the blog, docs and legal pages. <b>Fix.</b> Use <code>Intl.DateTimeFormat(localeTags[locale], { dateStyle: "long" })</code>.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WEB-9</span><span class="sev s-low">Low</span><span class="f-title">Both locales' dictionaries ship to the client</span></div>
+<p><code>i18n/context.tsx</code> imports <code>getDictionary</code>, and a 40 KB chunk contains the zh strings. The manual components import both content files. <b>Fix.</b> Pass only the current locale's dictionary from the server.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WEB-10</span><span class="sev s-low">Low</span><span class="f-title"><code>zh</code> is hardcoded in about 10 places</span></div>
+<p>The LocaleSwitcher regex, <code>robots.ts</code>, the <code>zh_CN</code> ternaries and links inside the legal content. Adding a third locale would break these quietly. <b>Fix.</b> Derive them from <code>locales</code> and <code>localeTags</code>.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WEB-11</span><span class="sev s-low">Low</span><span class="f-title">The 404 page injects unscoped <code>body</code> styles, and its comment is wrong</span><span class="tag">suspected</span></div>
+<p>The page renders inside the locale layout, so its global <code>body</code> rule overrides the site theme. <b>Fix.</b> Scope the styles to <code>.nf</code>.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WEB-12</span><span class="sev s-low">Low</span><span class="f-title">Public site tests test the wrong thing</span></div>
+<p><code>(public)/page.test.tsx</code> imports the editor page. Nothing tests <code>localize()</code> in the proxy, the sitemap or zh rendering. <b>Fix.</b> Move the test next to the editor page, and add unit tests for the proxy and sitemap.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WEB-13</span><span class="sev s-info">Info</span><span class="f-title"><code>LEGAL_REVIEW.md</code> says the repo is private</span></div>
+<p>The repo is public. <code>robots.ts</code> also sets <code>host</code>, which only Yandex reads.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">WEB-14</span><span class="sev s-info">Info</span><span class="f-title">No hint for Chinese-language browsers</span></div>
+<p>Bare paths always serve English. That is safe for SEO. A dismissible hint to switch to Chinese would help zh visitors find <code>/zh</code>.</p></div>
+
+</div>
+</details>
+
+<details>
+<summary>Build, tests, tooling · 4.5/10 · 0 critical, 2 high, 9 medium, 11 low, 1 info</summary>
+<div class="findings">
+
+<div class="f"><div class="f-head"><span class="f-id">BLD-1</span><span class="sev s-high">High</span><span class="f-title">No CI</span><span class="tag">lead verified</span></div>
+<p>There is no <code>.github/</code> directory. Vercel runs <code>scripts/vercel-build.sh</code>, which deploys Convex and builds the site but never runs tests or lint. Pull requests to this public repo get no checks, and a regression ships straight to production.</p>
+<p class="fix"><b>Fix.</b> One workflow that runs a frozen install, typecheck (including Convex), <code>eslint --max-warnings 0</code>, vitest, <code>cargo test</code>, <code>clippy -D warnings</code>, a WASM rebuild diff and the build.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">BLD-2</span><span class="sev s-high">High</span><span class="f-title">The Convex backend is outside every quality gate</span><span class="tag">lead verified</span></div>
+<div class="f-loc">convex/auth.config.ts:6 · convex/http.ts:20</div>
+<p><code>pnpm -r</code> only covers <code>apps/*</code> and <code>packages/*</code>. Running <code>tsc -p convex/tsconfig.json</code> fails with two <code>TS2580: Cannot find name 'process'</code> errors, because <code>@types/node</code> isn't available there. <code>convex/</code> has no lint and no tests, yet it holds the auth config, the webhook and every write path.</p>
+<p class="fix"><b>Fix.</b> Add <code>typescript</code> and <code>@types/node</code> at the root, a <code>typecheck:convex</code> script wired into <code>pnpm typecheck</code>, and convex-test suites.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">BLD-3</span><span class="sev s-med">Medium</span><span class="f-title">A leftover deploy script uploads the repo to a third-party endpoint</span><span class="tag">lead verified</span></div>
+<div class="f-loc">apps/web/scripts/deploy.sh:9, 320</div>
+<p><code>DEPLOY_ENDPOINT="https://codex-deploy-skills.vercel.sh/api/deploy"</code> receives a tarball of the tracked files through <code>curl -s</code>. The call has no <code>--fail</code> flag and no status check. Nothing references the script. The tarball leaves out <code>packages/*</code>, so a deploy made from it can't build anyway.</p>
+<p class="fix"><b>Fix.</b> Delete it. The real deploy path is <code>vercel.json</code> running <code>scripts/vercel-build.sh</code>.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">BLD-4</span><span class="sev s-med">Medium</span><span class="f-title"><code>.env.example</code> is gitignored, but the README tells you to copy it</span><span class="tag">lead verified</span></div>
+<p>A trailing <code>.env*</code> on <code>.gitignore:17</code> overrides the <code>!.env.example</code> exception above it, so a fresh clone has no template. <b>Fix.</b> Delete line 17, and commit the file with <code>CLERK_JWT_ISSUER_DOMAIN</code>, <code>CLERK_WEBHOOK_SECRET</code> and <code>CONVEX_DEPLOY_KEY</code> listed by name.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">BLD-5</span><span class="sev s-med">Medium</span><span class="f-title">The committed WASM binary can't be reproduced or verified</span></div>
+<p>A rebuild produces a different binary. There is no <code>rust-toolchain.toml</code> and the wasm-bindgen CLI version isn't pinned. <code>build-runtime-wasm.sh:69-70</code> patches glue code with an unchecked <code>replace</code> (merged BLD-14 and RT-14). <b>Fix.</b> Pin the toolchain, fail when the patch target isn't found, and diff the rebuilt binary in CI.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">BLD-6</span><span class="sev s-med">Medium</span><span class="f-title">The crate is licensed MIT, the repo GPL-3.0</span><span class="tag">lead verified</span></div>
+<p><code>packages/pseudocode-runtime/Cargo.toml:6</code> says <code>license = "MIT"</code>. The <code>LICENSE</code> file and the README say GPL-3.0, and no <code>package.json</code> declares a license. <b>Fix.</b> Set <code>GPL-3.0-only</code> or <code>GPL-3.0-or-later</code> everywhere.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">BLD-7</span><span class="sev s-med">Medium</span><span class="f-title">Low coverage and no thresholds</span></div>
+<p>Line coverage is 56% for web, 51% for the compiler (40.8% for semantics) and 56% for workspace. There are 5 Rust tests for a 1,172-line interpreter, and only web has coverage tooling. <b>Fix.</b> A root <code>test:coverage</code> script with thresholds that ratchet up.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">BLD-8</span><span class="sev s-med">Medium</span><span class="f-title">Known dependency advisories</span></div>
+<p>There is one moderate production advisory, and 15 high advisories in dev dependencies (undici via jsdom, brace-expansion, js-yaml, a Vitest path traversal, a Vite <code>fs.deny</code> bypass). <b>Fix.</b> <code>pnpm update</code>, bump vitest and jsdom, then audit again.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">BLD-11</span><span class="sev s-med">Medium</span><span class="f-title">Root-level metadata routes resolve against localhost</span><span class="tag">suspected</span></div>
+<p>The build warns 3 times that <code>metadataBase</code> is missing. <code>opengraph-image.tsx</code> and <code>manifest.ts</code> sit outside <code>[locale]</code>, where nothing sets it. <b>Fix.</b> Set <code>metadataBase</code> through a shared helper.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">BLD-12</span><span class="sev s-med">Medium</span><span class="f-title">Preview builds may deploy Convex functions to production</span><span class="tag">suspected</span></div>
+<p><code>scripts/vercel-build.sh</code> runs <code>convex deploy</code> without checking <code>VERCEL_ENV</code>. If the production deploy key is set for Preview, every PR branch deploys to production. <b>Fix.</b> Scope the deploy keys per environment.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">BLD-21</span><span class="sev s-med">Medium</span><span class="f-title">Heavy editor bundles</span><span class="tag">suspected</span></div>
+<p>The largest chunk is 6.67 MB and contains the TypeScript language service. The next is 3.15 MB of Monaco. A pseudocode editor needs neither the TS worker nor the extra languages. <b>Fix.</b> Import only <code>editor.api</code>, and check with a bundle analyzer.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">BLD-9</span><span class="sev s-low">Low</span><span class="f-title">Stale pnpm overrides</span></div>
+<p>Nothing depends on <code>rollup</code>, and the lockfile has no minimatch 9.x. The remaining overrides don't say which advisory they address. <b>Fix.</b> Remove the dead overrides and note the advisory id next to each remaining one.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">BLD-10</span><span class="sev s-low">Low</span><span class="f-title">Unexplained root dependencies</span></div>
+<p><code>svix</code> and <code>convex</code> belong at the root because <code>convex/</code> has no package.json. <code>next</code> at the root is probably there for Vercel's framework detection, and it adds a second resolution. <b>Fix.</b> Make <code>convex/</code> a workspace package, and set the Vercel root directory.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">BLD-15</span><span class="sev s-low">Low</span><span class="f-title">README setup notes are wrong</span></div>
+<p><code>pnpm test</code> doesn't run cargo, and the WASM build needs the <code>wasm-bindgen</code> CLI rather than wasm-pack. <b>Fix.</b> Correct both.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">BLD-16</span><span class="sev s-low">Low</span><span class="f-title">Lint allows warnings and checks generated code</span></div>
+<p>4 of the 6 warnings are in <code>src/runtime/wasm/pkg</code>. There is a dead <code>electron/**</code> block, and packages have no lint. <b>Fix.</b> Ignore the pkg directory, add <code>--max-warnings 0</code>, and lint the packages.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">BLD-17</span><span class="sev s-low">Low</span><span class="f-title">Two clippy warnings</span></div>
+<p><code>lib.rs:596</code> calls <code>contains_key</code> then <code>insert</code>, and <code>lib.rs:686</code> has identical branches. <b>Fix.</b> Use <code>get_mut</code> and merge the branches.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">BLD-18</span><span class="sev s-low">Low</span><span class="f-title">About 75 committed agent-tooling files</span></div>
+<p>The repo tracks <code>.agents/skills</code>, <code>.claude/skills</code> symlinks and <code>skills-lock.json</code>, and <code>CLAUDE.md</code> and <code>AGENTS.md</code> are identical. <b>Fix.</b> Gitignore the reinstallable skill files, and keep one <code>AGENTS.md</code> with <code>CLAUDE.md</code> importing it.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">BLD-19</span><span class="sev s-low">Low</span><span class="f-title">No Node or Rust toolchain pin</span></div>
+<p>Only <code>packageManager</code> is pinned. <b>Fix.</b> Add <code>engines.node</code>, <code>.nvmrc</code> and <code>rust-toolchain.toml</code>.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">BLD-20</span><span class="sev s-low">Low</span><span class="f-title">Strictness could go further</span></div>
+<p><code>strict</code> is on everywhere, but <code>noUncheckedIndexedAccess</code> isn't. Parser and interpreter code indexes arrays heavily. <b>Fix.</b> Enable it in the packages first, through a shared <code>tsconfig.base.json</code>.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">BLD-22</span><span class="sev s-low">Low</span><span class="f-title">Duplicate transitive versions</span></div>
+<p>Two versions each of <code>@types/node</code>, <code>@clerk/shared</code> and <code>baseline-browser-mapping</code>. <b>Fix.</b> <code>pnpm dedupe</code>, and align the version ranges.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">BLD-23</span><span class="sev s-low">Low</span><span class="f-title">Electron leftovers in the tests and runtime</span></div>
+<p>The jsdom URL points at an old preview host. <code>@clerk/nextjs</code> is aliased to Electron stubs, and <code>BUILD_TARGET === "electron"</code> branches remain although there is no Electron app. <b>Fix.</b> Remove them and mock Clerk explicitly.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">BLD-24</span><span class="sev s-low">Low</span><span class="f-title">Three files over 1,700 lines</span></div>
+<p><code>page.tsx</code>, <code>workspace/src/index.ts</code> and <code>flowchart/model.ts</code>. See UI-15, UI-16 and WS-12.</p></div>
+
+<div class="f"><div class="f-head"><span class="f-id">BLD-25</span><span class="sev s-info">Info</span><span class="f-title">Redundant Cache-Control on <code>/_next/static</code></span></div>
+<p>Next already sets immutable caching there and warns about the override. <b>Fix.</b> Remove the header rule.</p></div>
+
+</div>
+</details>
+
+<h2 id="strengths">What is already good</h2>
+<div class="two">
+  <div class="card">
+    <h3 style="margin-top:0">Architecture and security</h3>
+    <ul class="tight">
+      <li>Both public Convex functions take identity from the verified JWT. No function accepts a user or document id, and the token is checked twice, once in the route and again in Convex.</li>
+      <li>The Clerk webhook verifies its Svix signature against the raw body, and deletion runs through an internal mutation.</li>
+      <li>No <code>.env</code>, keyless or Clerk file appears anywhere in git history, and <code>NEXT_PUBLIC_</code> exposes only public values.</li>
+      <li>HSTS preload, <code>frame-ancestors 'none'</code>, nosniff, and <code>no-store</code> on authenticated GETs.</li>
+      <li>Payload limits are enforced at several layers: bytes, nesting depth, entry and node counts, and schema.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">Engineering</h3>
+    <ul class="tight">
+      <li>User code compiles and runs in workers. A step budget stops infinite loops in about 70 ms with a line-numbered RUN408.</li>
+      <li>The parser always makes progress. No agent found an input that hangs it, and 228 KB of real code compiles in 34 ms.</li>
+      <li>The workspace reducers are pure and never mutate state. Saved data is versioned, with a v1 to v2 migration, and unknown future versions are rejected.</li>
+      <li>The Monaco integration is careful: no hydration mismatches, a documented iOS workaround, and a tested null-caret guard.</li>
+      <li>The i18n migration keeps English URLs unchanged, permanently redirects <code>/en/*</code>, enforces key parity with <code>Dictionary = typeof en</code>, and emits full hreflang tags and sitemap entries.</li>
+      <li><code>strict</code> TypeScript everywhere, and a single React and Next resolution. All gates pass in under 30 seconds.</li>
+    </ul>
+  </div>
+</div>
+
+<h2 id="method">Method and limits</h2>
+<div class="scroll">
+<table>
+  <thead><tr><th scope="col">Agent (all Opus 5)</th><th scope="col">Scope</th><th scope="col">How</th></tr></thead>
+  <tbody>
+    <tr><td>Opus5-compiler</td><td><code>packages/compiler</code> against the manual</td><td>Bundled scratch repros with esbuild, and ran them end to end through the committed WASM.</td></tr>
+    <tr><td>Opus5-runtime</td><td>Rust interpreter, workers, runner</td><td>A Node harness on the committed WASM package. I confirmed it is byte-identical to the repo copy.</td></tr>
+    <tr><td>Opus5-backend-security</td><td>Convex, API route, proxy, CSP, webhook, docs</td><td>Read the Convex guidelines first, traced trust boundaries, and searched git history for secrets.</td></tr>
+    <tr><td>Opus5-workspace-sync</td><td>Workspace package, session hook, storage</td><td>Vitest scratch suites with a fake IndexedDB and mocked fetch.</td></tr>
+    <tr><td>Opus5-editor-ui</td><td>Editor page, sidebar, Monaco, flowchart, CSS</td><td>Flowchart round-trip repros, computed WCAG contrast ratios, code reading.</td></tr>
+    <tr><td>Opus5-public-site-i18n</td><td><code>[locale]</code> routes, i18n, SEO, legal text</td><td>Programmatic dictionary diff, metadata inheritance trace, legal claims checked against code.</td></tr>
+    <tr><td>Opus5-build-tests-deps</td><td>Gates, dependencies, CI, hygiene</td><td>Ran every gate, dependency audit, coverage and a WASM rebuild into a scratch directory.</td></tr>
+  </tbody>
+</table>
+</div>
+<p>No agent changed tracked files. Five agents lost their connection to the API partway through and resumed from their saved transcripts. I reran tests and typecheck myself, and reproduced COMP-1, COMP-3, COMP-7, RT-1 to RT-3, RT-5 to RT-8, RT-10, UI-1, UI-2, WS-1 to WS-3, WS-8 to WS-10 and WS-14, plus the BLD, SEC and WEB items tagged above.</p>
+<p><b>Not covered.</b></p>
+<ul class="tight">
+  <li>Nothing touched a live deployment, so the Clerk dashboard settings, the Convex environment variables and the Vercel environment scoping (WEB-3, BLD-12) are unverified.</li>
+  <li>No real-browser session was run, so there is no screen-reader pass, Lighthouse score, or check on real Android and iPad hardware.</li>
+  <li>The legal text was checked against the code, not reviewed by a lawyer.</li>
+</ul>
+
+<footer>
+  <p>Generated in Claude Code by Opus 5 (<code>claude-opus-5</code>, 1M context) as lead reviewer, with seven Opus 5 subagents. Report date 2026-09-13.</p>
+</footer>
+
+
+</main>
+</body>
+</html>

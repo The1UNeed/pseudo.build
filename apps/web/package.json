@@ -15,10 +15,11 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@clerk/localizations": "^4.16.1",
     "@clerk/nextjs": "^7.3.1",
+    "@monaco-editor/react": "^4.7.0",
     "@pseudobuild/compiler": "workspace:*",
     "@pseudobuild/workspace": "workspace:*",
-    "@monaco-editor/react": "^4.7.0",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
     "@xyflow/react": "^12.10.2",

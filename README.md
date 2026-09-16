@@ -30,6 +30,13 @@ WebAssembly. Signing in is optional and only enables cloud workspace sync.
 | `convex` | Convex schema, workspace sync functions, and Clerk webhook |
 | `scripts` | Build scripts |
 
+## Languages
+
+The site and editor ship in English (`/`) and Simplified Chinese (`/zh`). Locale routing lives in
+`apps/web/src/proxy.ts`, UI strings in `apps/web/src/i18n/messages/`, docs and blog content in
+`apps/web/src/lib/seo-content*.ts`, and legal pages in `content.en.tsx` / `content.zh.tsx` next to each page.
+Every page emits `hreflang` alternates and the sitemap lists both locales.
+
 ## Getting started
 
 ```bash

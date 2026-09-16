@@ -1,37 +1,40 @@
 import Link from "next/link";
 import { BrandMark } from "@/app/components/BrandMark";
+import { localePath, type Locale } from "@/i18n/config";
+import { getDictionary } from "@/i18n/messages";
+import { LocaleSwitcher } from "@/i18n/LocaleSwitcher";
 import { authorName, githubUrl, productName, productSlogan } from "@/lib/seo-content";
 
-const columns = [
-  {
-    title: "Product",
-    links: [
-      { href: "/app", label: "Editor" },
-      { href: "/docs", label: "Docs" },
-      { href: "/manual", label: "Manual" },
-      { href: "/blog", label: "Blog" },
-    ],
-  },
-  {
-    title: "Project",
-    links: [
-      { href: githubUrl, label: "Source code", external: true },
-      { href: `${githubUrl}/issues`, label: "Report an issue", external: true },
-      { href: `${githubUrl}/blob/main/LICENSE`, label: "GPL-3.0 license", external: true },
-    ],
-  },
-  {
-    title: "Legal",
-    links: [
-      { href: "/terms", label: "User agreement" },
-      { href: "/privacy", label: "Privacy" },
-      { href: "/security", label: "Security" },
-    ],
-  },
-] as const;
-
-export function Footer() {
+export function Footer({ locale }: { locale: Locale }) {
   const year = new Date().getFullYear();
+  const t = getDictionary(locale).footer;
+  const columns = [
+    {
+      title: t.product,
+      links: [
+        { href: localePath(locale, "/app"), label: t.editor },
+        { href: localePath(locale, "/docs"), label: getDictionary(locale).nav.docs },
+        { href: localePath(locale, "/manual"), label: getDictionary(locale).nav.manual },
+        { href: localePath(locale, "/blog"), label: getDictionary(locale).nav.blog },
+      ],
+    },
+    {
+      title: t.project,
+      links: [
+        { href: githubUrl, label: t.sourceCode, external: true },
+        { href: `${githubUrl}/issues`, label: t.reportIssue, external: true },
+        { href: `${githubUrl}/blob/main/LICENSE`, label: t.license, external: true },
+      ],
+    },
+    {
+      title: t.legal,
+      links: [
+        { href: localePath(locale, "/terms"), label: t.terms },
+        { href: localePath(locale, "/privacy"), label: t.privacy },
+        { href: localePath(locale, "/security"), label: t.security },
+      ],
+    },
+  ];
 
   return (
     <footer className="site-footer">
@@ -42,7 +45,11 @@ export function Footer() {
             <span className="text-lg font-extrabold tracking-tight">{productName}</span>
           </div>
           <p className="mt-4 max-w-xs text-sm leading-6">{productSlogan}</p>
-          <p className="mt-2 text-sm leading-6">Build your pseudo code project freely and creatively.</p>
+          <p className="mt-2 text-sm leading-6">{t.slogan2}</p>
+          <p className="mt-6 text-xs font-bold uppercase tracking-[0.16em] text-white">{t.language}</p>
+          <p className="mt-2 text-sm">
+            <LocaleSwitcher />
+          </p>
         </div>
 
         {columns.map((column) => (
@@ -69,9 +76,9 @@ export function Footer() {
 
       <div className="site-wrap flex flex-col gap-2 border-t border-white/10 py-6 text-xs md:flex-row md:items-center md:justify-between">
         <p>
-          &copy; {year} {authorName}. Released under the GNU GPL v3.
+          &copy; {year} {authorName}. {t.copyright}
         </p>
-        <p>Free and open source, forever.</p>
+        <p>{t.freeForever}</p>
       </div>
     </footer>
   );

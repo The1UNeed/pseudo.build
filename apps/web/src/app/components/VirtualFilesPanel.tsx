@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useDictionary } from "@/i18n/context";
 
 interface VirtualFilesPanelProps {
   files: Record<string, string[]>;
@@ -15,6 +16,7 @@ export function VirtualFilesPanel({
   selectedFileName,
   onSelectedFileNameChange,
 }: VirtualFilesPanelProps) {
+  const t = useDictionary().editor;
   const fileNames = useMemo(() => Object.keys(files).sort(), [files]);
   const [internalSelected, setInternalSelected] = useState<string>(selectedFileName ?? "");
   const [newFileName, setNewFileName] = useState("");
@@ -34,11 +36,11 @@ export function VirtualFilesPanel({
   const handleAddFile = () => {
     const trimmed = newFileName.trim();
     if (!trimmed) {
-      setFileError("Enter a file name.");
+      setFileError(t.virtualFiles.enterName);
       return;
     }
     if (files[trimmed]) {
-      setFileError("File already exists.");
+      setFileError(t.virtualFiles.exists);
       return;
     }
     setFileError(null);
@@ -81,13 +83,13 @@ export function VirtualFilesPanel({
           }}
           className="h-8 min-w-[200px] rounded-lg border border-[var(--separator)] bg-[var(--surface)] px-3 font-mono text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
           placeholder="FileA.txt"
-          aria-label="New virtual file name"
+          aria-label={t.virtualFiles.newName}
         />
         <button type="button" className="rounded-lg bg-[var(--surface2)] px-3 py-1.5 text-xs font-medium text-[var(--text)] hover:bg-[var(--surface3)]" onClick={handleAddFile}>
-          Add
+          {t.virtualFiles.add}
         </button>
         <button type="button" className="rounded-lg bg-[var(--surface2)] px-3 py-1.5 text-xs font-medium text-[var(--text)] hover:bg-[var(--surface3)] disabled:opacity-40" onClick={handleDeleteFile} disabled={!activeSelected}>
-          Delete
+          {t.virtualFiles.delete}
         </button>
       </div>
       {fileError ? <p className="text-sm text-[var(--red)]">{fileError}</p> : null}
@@ -95,7 +97,7 @@ export function VirtualFilesPanel({
       <div className="grid grid-cols-1 gap-3 md:grid-cols-[200px_1fr]">
         <div className="rounded-lg border border-[var(--separator)] bg-[var(--surface)] p-1.5">
           {fileNames.length === 0 ? (
-            <p className="p-2 text-sm text-[var(--text2)]">No virtual files.</p>
+            <p className="p-2 text-sm text-[var(--text2)]">{t.virtualFiles.empty}</p>
           ) : (
             <ul className="space-y-0.5">
               {fileNames.map((name) => (
@@ -121,7 +123,7 @@ export function VirtualFilesPanel({
           value={selectedContent}
           onChange={(event) => handleContentChange(event.target.value)}
           className="h-40 w-full rounded-lg border border-[var(--separator)] bg-[var(--surface)] p-3 font-mono text-sm text-[var(--text)] outline-none focus:border-[var(--accent)]"
-          placeholder={activeSelected ? "One line per record" : "Create a virtual file to edit contents."}
+          placeholder={activeSelected ? t.virtualFiles.records : t.virtualFiles.createFirst}
           disabled={!activeSelected}
         />
       </div>

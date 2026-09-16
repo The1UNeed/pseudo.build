@@ -1,25 +1,33 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { BrandMark } from "@/app/components/BrandMark";
+import { localePath, type Locale } from "@/i18n/config";
+import { getDictionary } from "@/i18n/messages";
+import { LocaleSwitcher } from "@/i18n/LocaleSwitcher";
 import { githubUrl, productName } from "@/lib/seo-content";
 
 export type PublicNavKey = "docs" | "blog" | "manual" | "legal";
 
 type PublicHeaderProps = {
+  locale: Locale;
   active?: PublicNavKey;
 };
 
-const navItems = [
-  { href: "/docs", label: "Docs", key: "docs" },
-  { href: "/manual", label: "Manual", key: "manual" },
-  { href: "/blog", label: "Blog", key: "blog" },
-] as const;
+export function PublicHeader({ locale, active }: PublicHeaderProps) {
+  const t = getDictionary(locale).nav;
+  const navItems = [
+    { href: "/docs", label: t.docs, key: "docs" },
+    { href: "/manual", label: t.manual, key: "manual" },
+    { href: "/blog", label: t.blog, key: "blog" },
+  ] as const;
 
-export function PublicHeader({ active }: PublicHeaderProps) {
   return (
     <header className="site-header">
       <nav className="site-wrap flex h-16 items-center justify-between gap-6">
-        <Link href="/" className="flex items-center gap-2.5 text-[15px] font-extrabold tracking-tight text-white">
+        <Link
+          href={localePath(locale, "/")}
+          className="flex items-center gap-2.5 text-[15px] font-extrabold tracking-tight text-white"
+        >
           <BrandMark size={28} />
           {productName}
         </Link>
@@ -28,7 +36,7 @@ export function PublicHeader({ active }: PublicHeaderProps) {
           {navItems.map((item) => (
             <Link
               key={item.key}
-              href={item.href}
+              href={localePath(locale, item.href)}
               className="site-nav-link"
               aria-current={active === item.key ? "page" : undefined}
             >
@@ -41,12 +49,13 @@ export function PublicHeader({ active }: PublicHeaderProps) {
             rel="noopener noreferrer"
             className="site-nav-link inline-flex items-center gap-1"
           >
-            GitHub <ArrowUpRight size={14} />
+            {t.github} <ArrowUpRight size={14} />
           </a>
+          <LocaleSwitcher className="site-nav-link" />
         </div>
 
-        <Link href="/app" className="site-btn h-10 px-4 text-[13px]">
-          Open editor
+        <Link href={localePath(locale, "/app")} className="site-btn h-10 px-4 text-[13px]">
+          {t.openEditor}
         </Link>
       </nav>
     </header>
