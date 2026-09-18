@@ -1,23 +1,37 @@
 import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
 
-/** Removes every record owned by a Clerk user. Called from the Clerk `user.deleted` webhook. */
+/**
+ * Removes every record owned by a Clerk user and leaves a tombstone so an open tab can't recreate them.
+ * Called from the Clerk `user.deleted` webhook.
+ */
 export const deleteByClerkUserId = internalMutation({
   args: { clerkUserId: v.string() },
+  returns: v.object({ deletedUsers: v.number(), deletedWorkspaces: v.number() }),
   handler: async (ctx, { clerkUserId }) => {
-    const users = await ctx.db
+    const user = await ctx.db
       .query("users")
       .withIndex("by_clerk_user", (query) => query.eq("clerkUserId", clerkUserId))
-      .collect();
-    const workspaces = await ctx.db
+      .unique();
+    const workspace = await ctx.db
       .query("workspaces")
       .withIndex("by_clerk_user", (query) => query.eq("clerkUserId", clerkUserId))
-      .collect();
+      .unique();
+    const tombstone = await ctx.db
+      .query("deletedUsers")
+      .withIndex("by_clerk_user", (query) => query.eq("clerkUserId", clerkUserId))
+      .unique();
 
-    for (const record of [...users, ...workspaces]) {
-      await ctx.db.delete(record._id);
+    if (user) {
+      await ctx.db.delete("users", user._id);
+    }
+    if (workspace) {
+      await ctx.db.delete("workspaces", workspace._id);
+    }
+    if (!tombstone) {
+      await ctx.db.insert("deletedUsers", { clerkUserId, deletedAt: Date.now() });
     }
 
-    return { deletedUsers: users.length, deletedWorkspaces: workspaces.length };
+    return { deletedUsers: user ? 1 : 0, deletedWorkspaces: workspace ? 1 : 0 };
   },
 });

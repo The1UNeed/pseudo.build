@@ -11,6 +11,8 @@ interface WorkerRunResponse {
   kind: "run-result";
   id: number;
   result: RunResult;
+  /** The WASM instance threw, so it may be corrupted and must not be reused. */
+  crashed?: boolean;
 }
 
 interface WorkerStatusMessage {
@@ -66,55 +68,51 @@ export class PseudocodeRuntimeRunner {
         return;
       }
 
-      const { id, result } = event.data;
+      const { id, result, crashed } = event.data;
       const pending = this.pending.get(id);
       if (!pending) {
         if (id === this.preloadId && !result.success) {
-          const error = new Error(
-            result.stderr || result.diagnostics[0]?.message || "Pseudocode runtime preload failed.",
+          // A failed load must not stay cached: start a fresh worker on the next attempt.
+          this.resetWorker(
+            new Error(result.stderr || result.diagnostics[0]?.message || "Pseudocode runtime preload failed."),
           );
-          this.preloadReject?.(error);
-          this.preloadId = null;
-          this.preloadResolve = null;
-          this.preloadReject = null;
-          this.preloadPromise = null;
           this.setStatus("error");
         }
         return;
       }
       this.pending.delete(id);
       pending.resolve(result);
+      if (crashed) {
+        this.resetWorker(new Error("Pseudocode runtime crashed and was restarted."));
+        return;
+      }
       this.setStatus(this.runtimeReady ? "ready" : "idle");
     };
 
     this.worker.onerror = (event) => {
-      const error = new Error(event.message || "Pseudocode runtime worker crashed.");
-      this.preloadReject?.(error);
-      this.preloadId = null;
-      this.preloadResolve = null;
-      this.preloadReject = null;
-      this.preloadPromise = null;
-      for (const pending of this.pending.values()) {
-        pending.reject(error);
-      }
-      this.pending.clear();
-      this.resetWorker();
+      this.resetWorker(new Error(event.message || "Pseudocode runtime worker crashed."));
       this.setStatus("error");
     };
 
     return this.worker;
   }
 
-  private resetWorker() {
-    if (this.worker) {
-      this.worker.terminate();
-      this.worker = null;
-    }
+  /** Terminates the worker and rejects every request still waiting on it. */
+  private resetWorker(error: Error) {
+    this.worker?.terminate();
+    this.worker = null;
     this.runtimeReady = false;
+    const pending = [...this.pending.values()];
+    const preloadReject = this.preloadReject;
+    this.pending.clear();
     this.preloadPromise = null;
     this.preloadId = null;
     this.preloadResolve = null;
     this.preloadReject = null;
+    preloadReject?.(error);
+    for (const request of pending) {
+      request.reject(error);
+    }
     this.setStatus("idle");
   }
 
@@ -135,9 +133,8 @@ export class PseudocodeRuntimeRunner {
       const timer = window.setTimeout(() => {
         this.pending.delete(id);
         const runtimeInitialized = this.runtimeReady || runtimeWasReadyAtStart;
-        if (runtimeInitialized) {
-          this.resetWorker();
-        } else {
+        this.resetWorker(new Error(runtimeInitialized ? "Execution timed out." : "Runtime initialization timed out."));
+        if (!runtimeInitialized) {
           this.setStatus("error");
         }
         resolve({
@@ -166,9 +163,8 @@ export class PseudocodeRuntimeRunner {
         });
       }, effectiveTimeoutMs);
 
-      workerPromise.finally(() => {
-        window.clearTimeout(timer);
-      });
+      const clearTimer = () => window.clearTimeout(timer);
+      workerPromise.then(clearTimer, clearTimer);
     });
 
     try {
@@ -196,7 +192,9 @@ export class PseudocodeRuntimeRunner {
   }
 
   initialize(): void {
-    void this.preload();
+    this.preload().catch(() => {
+      /* Runtime errors are shown when the user runs code. */
+    });
   }
 
   preload(): Promise<void> {

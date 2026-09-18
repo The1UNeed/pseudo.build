@@ -1,21 +1,46 @@
 import type { MetadataRoute } from "next";
-import { docs, posts, siteUrl } from "@/lib/seo-content";
+import { languageAlternates, locales, localeUrl } from "@/i18n/config";
+import { docs, posts } from "@/lib/seo-content";
+
+const staticRoutes: Array<{ path: string; priority: number; changeFrequency: "weekly" | "monthly" | "yearly" }> = [
+  { path: "/", priority: 1, changeFrequency: "weekly" },
+  { path: "/app", priority: 0.9, changeFrequency: "monthly" },
+  { path: "/docs", priority: 0.8, changeFrequency: "weekly" },
+  { path: "/manual", priority: 0.8, changeFrequency: "monthly" },
+  { path: "/app/manual", priority: 0.5, changeFrequency: "monthly" },
+  { path: "/blog", priority: 0.7, changeFrequency: "weekly" },
+  { path: "/terms", priority: 0.2, changeFrequency: "yearly" },
+  { path: "/privacy", priority: 0.2, changeFrequency: "yearly" },
+  { path: "/security", priority: 0.2, changeFrequency: "yearly" },
+];
+
+const siteUpdated = new Date("2026-09-12");
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const staticRoutes = ["", "/app", "/docs", "/blog", "/manual", "/terms", "/privacy", "/security"].map((path) => ({
-    url: `${siteUrl}${path}`,
-    lastModified: new Date("2026-09-06"),
-  }));
+  const entries: Array<{ path: string; lastModified: Date; priority: number; changeFrequency: "weekly" | "monthly" | "yearly" }> = [
+    ...staticRoutes.map((route) => ({ ...route, lastModified: siteUpdated })),
+    ...docs.map((doc) => ({
+      path: `/docs/${doc.slug}`,
+      lastModified: new Date(doc.updated),
+      priority: 0.6,
+      changeFrequency: "monthly" as const,
+    })),
+    ...posts.map((post) => ({
+      path: `/blog/${post.slug}`,
+      lastModified: new Date(post.date),
+      priority: 0.5,
+      changeFrequency: "monthly" as const,
+    })),
+  ];
 
-  const docRoutes = docs.map((doc) => ({
-    url: `${siteUrl}/docs/${doc.slug}`,
-    lastModified: new Date(doc.updated),
-  }));
-
-  const blogRoutes = posts.map((post) => ({
-    url: `${siteUrl}/blog/${post.slug}`,
-    lastModified: new Date(post.date),
-  }));
-
-  return [...staticRoutes, ...docRoutes, ...blogRoutes];
+  // One row per locale, each carrying the full hreflang set.
+  return entries.flatMap((entry) =>
+    locales.map((locale) => ({
+      url: localeUrl(locale, entry.path),
+      lastModified: entry.lastModified,
+      changeFrequency: entry.changeFrequency,
+      priority: entry.priority,
+      alternates: { languages: languageAlternates(entry.path) },
+    })),
+  );
 }

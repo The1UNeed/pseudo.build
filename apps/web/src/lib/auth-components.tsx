@@ -9,9 +9,15 @@ import {
   UserButton as ClerkUserButton,
   useAuth as useClerkAuth,
 } from "@clerk/nextjs";
+import { zhCN } from "@clerk/localizations";
+import { localePath, type Locale } from "@/i18n/config";
+import { useDictionary, useLocale } from "@/i18n/context";
 import { getClientAppPlatform, platformUsesCloudSaving } from "@/lib/platform";
 
 const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+
+/** Clerk's built-in strings per locale; English is Clerk's default. */
+const clerkLocalizations: Partial<Record<Locale, typeof zhCN>> = { zh: zhCN };
 
 type AuthState = ReturnType<typeof useClerkAuth>;
 
@@ -28,26 +34,35 @@ function cloudAuthRequired() {
 }
 
 export function ClerkProvider({ children }: { children: ReactNode }) {
+  const locale = useLocale();
+  const t = useDictionary().auth;
+
   if (!isCloudAuthConfigured()) {
     return <>{children}</>;
   }
 
+  const base: Partial<typeof zhCN> = clerkLocalizations[locale] ?? {};
+
   return (
     <ClerkProviderBase
       publishableKey={clerkPublishableKey}
-      signInUrl="/login"
-      signUpUrl="/login"
-      signInFallbackRedirectUrl="/app"
-      signUpFallbackRedirectUrl="/app"
-      afterSignOutUrl="/"
+      signInUrl={localePath(locale, "/login")}
+      signUpUrl={localePath(locale, "/login")}
+      signInFallbackRedirectUrl={localePath(locale, "/app")}
+      signUpFallbackRedirectUrl={localePath(locale, "/app")}
+      afterSignOutUrl={localePath(locale, "/")}
       localization={{
+        ...base,
         userButton: {
-          action__manageAccount: "Settings",
+          ...base.userButton,
+          action__manageAccount: t.manageAccount,
         },
         userProfile: {
+          ...base.userProfile,
           navbar: {
-            title: "Settings",
-            description: "Manage your account and application preferences.",
+            ...base.userProfile?.navbar,
+            title: t.settingsTitle,
+            description: t.settingsDescription,
           },
         },
       }}
@@ -114,7 +129,7 @@ export function SignInButton({
   }
 
   return (
-    <ClerkSignInButton fallbackRedirectUrl="/app" {...props}>
+    <ClerkSignInButton {...props}>
       {children}
     </ClerkSignInButton>
   );
@@ -129,7 +144,7 @@ export function SignUpButton({
   }
 
   return (
-    <ClerkSignUpButton fallbackRedirectUrl="/app" {...props}>
+    <ClerkSignUpButton {...props}>
       {children}
     </ClerkSignUpButton>
   );

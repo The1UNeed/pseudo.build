@@ -4,37 +4,38 @@
   "private": true,
   "description": "Pseudo Build: free and open-source pseudo code editor and compiler.",
   "author": "Alex",
+  "license": "GPL-3.0-only",
   "packageManager": "pnpm@10.29.3",
+  "engines": {
+    "node": ">=20.9"
+  },
   "scripts": {
     "dev": "pnpm --filter @pseudobuild/web dev",
     "dev:web": "pnpm --filter @pseudobuild/web dev",
     "build": "pnpm --filter @pseudobuild/web build",
-    "test": "pnpm -r --if-present run test",
+    "test": "pnpm -r --if-present run test && pnpm test:convex && pnpm test:runtime",
+    "test:coverage": "pnpm -r --if-present run test:coverage",
+    "test:convex": "vitest run --config convex/vitest.config.mts",
     "test:compiler": "pnpm --filter @pseudobuild/compiler test",
     "test:web": "pnpm --filter @pseudobuild/web test",
     "build:runtime": "./scripts/build-runtime-wasm.sh",
     "test:runtime": "cargo test -p pseudocode-runtime",
-    "typecheck": "pnpm -r --if-present run typecheck",
+    "typecheck": "pnpm -r --if-present run typecheck && pnpm typecheck:convex",
+    "typecheck:convex": "tsc -p convex/tsconfig.json --noEmit",
     "lint": "pnpm -r --if-present run lint"
   },
   "devDependencies": {
-    "convex": "^1.36.1",
-    "next": "16.3.4"
+    "@edge-runtime/vm": "5.0.0",
+    "@types/node": "^20.19.43",
+    "convex": "^1.45.0",
+    "convex-test": "0.0.58",
+    "next": "16.3.4",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
   },
   "pnpm": {
     "overrides": {
-      "@babel/core": "^7.29.6",
-      "dompurify": "^3.4.14",
-      "js-cookie": "^3.0.7",
-      "minimatch@^3.0.0": "3.1.4",
-      "minimatch@^9.0.0": "9.0.7",
-      "minimatch@^10.0.0": "10.2.3",
-      "postcss": "^8.5.28",
-      "rollup": "^4.59.0",
-      "ws": "^8.21.0",
-      "nanoid@^3.0.0": "3.3.18",
-      "sharp": "^0.35.4",
-      "browserslist": "^4.28.9"
+      "dompurify": "^3.4.14"
     },
     "onlyBuiltDependencies": [
       "dtrace-provider",
@@ -44,6 +45,6 @@
     ]
   },
   "dependencies": {
-    "svix": "^2.3.0"
+    "svix": "^2.5.0"
   }
 }

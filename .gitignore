@@ -6,7 +6,6 @@ dist
 coverage
 target
 *.tsbuildinfo
-convex/workspaceSyncSecret.ts
 
 .env
 .env.*
@@ -14,5 +13,3 @@ convex/workspaceSyncSecret.ts
 
 *.log
 .DS_Store
-.env*
-

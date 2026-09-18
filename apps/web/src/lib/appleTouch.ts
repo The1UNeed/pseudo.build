@@ -10,6 +10,23 @@ interface MediaQueryListLike {
 
 type MatchMediaLike = (query: string) => MediaQueryListLike;
 
+export const TOUCH_TABLET_BREAKPOINT = 744;
+
+export type TouchLayout = "phone" | "tablet" | null;
+
+/**
+ * Chooses the editor layout from viewport width and `(pointer: coarse)`. Narrow windows get the
+ * phone layout even with a mouse; wide coarse-pointer screens get the tablet layout.
+ */
+export function getTouchLayout(viewportWidth: number, coarsePointer: boolean): TouchLayout {
+  if (viewportWidth < TOUCH_TABLET_BREAKPOINT) {
+    return "phone";
+  }
+
+  return coarsePointer ? "tablet" : null;
+}
+
+/** Only for Monaco's iOS input workarounds; layout decisions use getTouchLayout. */
 export function isAppleTouchDevice(navigatorLike?: NavigatorLike | null): boolean {
   if (!navigatorLike) {
     return false;

@@ -1,3 +1,6 @@
+import type { Locale } from "@/i18n/config";
+import { docsZh, faqZh, postsZh } from "./seo-content.zh";
+
 export const siteUrl = "https://pseudo.build";
 
 export const productName = "Pseudo Build";
@@ -8,28 +11,12 @@ export const authorName = "Alex Xin Liu";
 
 export const githubUrl = "https://github.com/The1UNeed/pseudo.build";
 
+/** Monitored mailbox for privacy, security, and legal requests. */
+export const contactEmail = "privacy@pseudo.build";
+
+export const securityEmail = "security@pseudo.build";
+
 export const productSlogan = "Free and open-source pseudo code editor and compiler.";
-
-export const homeSeoTitle = "Pseudo Build - Free and open-source pseudo code editor and compiler";
-
-export const homeSeoDescription =
-  "Pseudo Build is a free and open-source pseudo code editor and compiler. Write, compile, run, and debug pseudocode in the browser and build your pseudo code project freely and creatively.";
-
-export const seoKeywords = [
-  "Pseudo Build",
-  "pseudo code editor",
-  "pseudo code compiler",
-  "pseudocode editor",
-  "pseudocode compiler",
-  "free pseudocode compiler",
-  "open source pseudocode editor",
-  "browser pseudocode editor",
-  "browser pseudocode compiler",
-  "IGCSE pseudocode",
-  "IGCSE pseudocode compiler",
-  "Cambridge pseudocode",
-  "pseudocode flowchart",
-];
 
 export const productTagline =
   "A free and open-source pseudo code editor and compiler for writing, running, debugging, and learning structured pseudocode in the browser.";
@@ -377,7 +364,9 @@ export const posts: SeoPost[] = [
   },
 ];
 
-export const faqItems = [
+export type FaqItem = { question: string; answer: string };
+
+export const faqItems: FaqItem[] = [
   {
     question: "What is Pseudo Build?",
     answer:
@@ -399,16 +388,42 @@ export const faqItems = [
       "No. Settings lets you switch between Cambridge IGCSE, Cambridge AS and A Level, IB Diploma Programme, OCR GCSE, and AQA GCSE notation. The compiler, highlighter, and completions follow the syntax you pick.",
   },
   {
+    question: "Which exam boards does the pseudocode follow?",
+    answer:
+      "The syntax follows the Cambridge International pseudocode guide used in IGCSE Computer Science (0478 and 0984), O Level Computer Science (2210), and AS and A Level Computer Science (9618). Pseudo Build is an independent project and is not affiliated with or endorsed by Cambridge.",
+  },
+  {
+    question: "Do I need to install anything?",
+    answer:
+      "No. The editor, compiler, and runtime load in any modern browser on a laptop, Chromebook, or tablet. Nothing is installed and nothing needs to be approved by school IT.",
+  },
+  {
     question: "Is Pseudo Build really free and open source?",
     answer:
       "Yes. Pseudo Build is free to use and the source code is published under the GNU GPL v3 on GitHub. You can read it, run it yourself, and contribute.",
   },
 ];
 
-export function getDoc(slug: string) {
-  return docs.find((doc) => doc.slug === slug);
+const docsByLocale: Record<Locale, SeoDoc[]> = { en: docs, zh: docsZh };
+const postsByLocale: Record<Locale, SeoPost[]> = { en: posts, zh: postsZh };
+const faqByLocale: Record<Locale, FaqItem[]> = { en: faqItems, zh: faqZh };
+
+export function getDocs(locale: Locale): SeoDoc[] {
+  return docsByLocale[locale];
 }
 
-export function getPost(slug: string) {
-  return posts.find((post) => post.slug === slug);
+export function getPosts(locale: Locale): SeoPost[] {
+  return postsByLocale[locale];
+}
+
+export function getFaq(locale: Locale): FaqItem[] {
+  return faqByLocale[locale];
+}
+
+export function getDoc(locale: Locale, slug: string) {
+  return getDocs(locale).find((doc) => doc.slug === slug);
+}
+
+export function getPost(locale: Locale, slug: string) {
+  return getPosts(locale).find((post) => post.slug === slug);
 }

@@ -5,8 +5,9 @@ import Editor, { BeforeMount, OnMount } from "@monaco-editor/react";
 import "@/lib/monacoLocalLoader";
 import type * as Monaco from "monaco-editor";
 import { LoaderCircle } from "lucide-react";
+import { useDictionary } from "@/i18n/context";
 import { Diagnostic } from "@/compiler/types";
-import { autoCorrectPseudocodeLine } from "@/app/components/pseudocodeAutocorrect";
+import { autoCorrectPseudocodeLine, isAssignmentArrowPrefix } from "@/app/components/pseudocodeAutocorrect";
 import { isAppleTouchDevice } from "@/lib/appleTouch";
 import { ensureMonacoNullCaretHitTestGuard } from "@/lib/monacoNullCaretHitTestGuard";
 import { getPseudocodeEditorOptions } from "@/lib/pseudocodeEditorOptions";
@@ -94,48 +95,52 @@ const FLOW_KEYWORDS = [
 const ROUTINE_SUGGESTIONS = [
   {
     label: "DIV(Number, Divisor)",
-    detail: "Integer quotient",
+    detail: "integerQuotient",
     insertText: "DIV(${1:Number}, ${2:Divisor})",
   },
   {
     label: "MOD(Number, Divisor)",
-    detail: "Integer remainder",
+    detail: "integerRemainder",
     insertText: "MOD(${1:Number}, ${2:Divisor})",
   },
   {
     label: "LENGTH(Text)",
-    detail: "String length",
+    detail: "stringLength",
     insertText: "LENGTH(${1:Text})",
   },
   {
     label: "LCASE(TextOrChar)",
-    detail: "Lower-case conversion",
+    detail: "lowerCase",
     insertText: "LCASE(${1:TextOrChar})",
   },
   {
     label: "UCASE(TextOrChar)",
-    detail: "Upper-case conversion",
+    detail: "upperCase",
     insertText: "UCASE(${1:TextOrChar})",
   },
   {
     label: "SUBSTRING(Text, Start, Length)",
-    detail: "Part of a string",
+    detail: "substring",
     insertText: "SUBSTRING(${1:Text}, ${2:Start}, ${3:Length})",
   },
   {
     label: "ROUND(Value, Places)",
-    detail: "Round a real value",
+    detail: "round",
     insertText: "ROUND(${1:Value}, ${2:Places})",
   },
   {
     label: "RANDOM()",
-    detail: "Random number from 0 to 1 inclusive",
+    detail: "random",
     insertText: "RANDOM()",
   },
 ] as const;
 
 let pseudocodeLanguageRegistered = false;
 let pseudocodeCompletionProviderRegistered = false;
+
+type AutocompleteText = ReturnType<typeof useDictionary>["editor"]["autocomplete"];
+// The completion provider is registered once, so it reads its text through this ref, which every mount keeps current.
+const completionTextRef: { current: AutocompleteText | null } = { current: null };
 
 if (typeof window !== "undefined") {
   void ensureMonacoNullCaretHitTestGuard();
@@ -149,6 +154,7 @@ export function MonacoPseudocodeEditor({
   documentKey,
   syntaxId = "cambridge-igcse",
 }: MonacoPseudocodeEditorProps) {
+  const t = useDictionary().editor;
   const syntax = useMemo(() => resolveSyntax(syntaxId), [syntaxId]);
   const languageId = languageIdForSyntax(syntax.id);
   const keywordLookup = useMemo(() => keywordLookupForSyntax(syntax), [syntax]);
@@ -169,7 +175,7 @@ export function MonacoPseudocodeEditor({
       startColumn: diagnostic.column,
       endLineNumber: diagnostic.endLine,
       endColumn: Math.max(diagnostic.endColumn + 1, diagnostic.column + 1),
-      message: `${diagnostic.code}: ${diagnostic.message}${diagnostic.hint ? `\nHint: ${diagnostic.hint}` : ""}`,
+      message: `${diagnostic.code}: ${diagnostic.message}${diagnostic.hint ? `\n${t.diagnostics.hint} ${diagnostic.hint}` : ""}`,
       severity:
         diagnostic.severity === "error"
           ? 8
@@ -177,7 +183,12 @@ export function MonacoPseudocodeEditor({
             ? 4
             : 2,
     }));
-  }, [diagnostics]);
+  }, [diagnostics, t.diagnostics.hint]);
+  const markersRef = useRef(markers);
+
+  useEffect(() => {
+    completionTextRef.current = t.autocomplete;
+  }, [t.autocomplete]);
 
   const handleMount: OnMount = (editor, monaco) => {
     monacoRef.current = monaco;
@@ -263,6 +274,7 @@ export function MonacoPseudocodeEditor({
           if (modelLanguage !== "igcse-pseudocode" && !modelLanguage.startsWith("pseudo-")) {
             return { suggestions: [] };
           }
+          const text = completionTextRef.current ?? t.autocomplete;
           const word = model.getWordUntilPosition(position);
           const range = {
             startLineNumber: position.lineNumber,
@@ -285,7 +297,7 @@ export function MonacoPseudocodeEditor({
 
           const routineSuggestions = ROUTINE_SUGGESTIONS.map((routine, index) => ({
             label: routine.label,
-            detail: routine.detail,
+            detail: text[routine.detail],
             kind: monaco.languages.CompletionItemKind.Function,
             insertText: routine.insertText,
             insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
@@ -295,8 +307,8 @@ export function MonacoPseudocodeEditor({
 
           const shorthandSuggestions = [
             {
-              label: "PRINT (alias)",
-              detail: "Alias for OUTPUT",
+              label: text.printAlias,
+              detail: text.outputAlias,
               kind: monaco.languages.CompletionItemKind.Snippet,
               insertText: "OUTPUT ${1:\"text\"}",
               insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
@@ -306,7 +318,7 @@ export function MonacoPseudocodeEditor({
             },
             {
               label: "p -> OUTPUT",
-              detail: "Quick starter",
+              detail: text.quickStarter,
               kind: monaco.languages.CompletionItemKind.Snippet,
               insertText: "OUTPUT ${1:\"text\"}",
               insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
@@ -316,7 +328,7 @@ export function MonacoPseudocodeEditor({
             },
             {
               label: "o -> OUTPUT",
-              detail: "Quick starter",
+              detail: text.quickStarter,
               kind: monaco.languages.CompletionItemKind.Snippet,
               insertText: "OUTPUT ${1:\"text\"}",
               insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
@@ -326,7 +338,7 @@ export function MonacoPseudocodeEditor({
             },
             {
               label: "i -> INPUT",
-              detail: "Quick starter",
+              detail: text.quickStarter,
               kind: monaco.languages.CompletionItemKind.Snippet,
               insertText: "INPUT ${1:Variable}",
               insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
@@ -344,6 +356,7 @@ export function MonacoPseudocodeEditor({
     const model = editor.getModel();
     if (model) {
       monaco.editor.setModelLanguage(model, languageId);
+      monaco.editor.setModelMarkers(model, "igcse-compiler", markersRef.current);
     }
 
     const insertQuotePair = (quote: "\"" | "'") => {
@@ -395,21 +408,17 @@ export function MonacoPseudocodeEditor({
 
     editor.onKeyDown((event) => {
       const browserKey = event.browserEvent.key;
-      const browserCode = event.browserEvent.code;
       if (browserKey === "Tab") {
         lastTabKeydownAt = Date.now();
       }
-      const isQuoteKey =
-        browserKey === "\"" ||
-        browserKey === "'" ||
-        (browserCode === "Quote" && browserKey !== "Dead");
-      if (isQuoteKey) {
-        const quote = browserKey === "\"" ? "\"" : "'";
-        const paired = insertQuotePair(quote);
-        if (paired) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
+      // Leave IME composition alone, and only react to a real quote character: the physical
+      // Quote key types "ä" on a German layout.
+      if (event.browserEvent.isComposing || (browserKey !== "\"" && browserKey !== "'")) {
+        return;
+      }
+      if (insertQuotePair(browserKey)) {
+        event.preventDefault();
+        event.stopPropagation();
       }
     });
 
@@ -433,7 +442,11 @@ export function MonacoPseudocodeEditor({
             const lineContent = model.getLineContent(lineNumber);
             const previousChar = lineContent[insertedAtColumn - 2] ?? "";
             const currentChar = lineContent[insertedAtColumn - 1] ?? "";
-            if (previousChar === "<" && currentChar === "-") {
+            if (
+              previousChar === "<" &&
+              currentChar === "-" &&
+              isAssignmentArrowPrefix(lineContent.slice(0, insertedAtColumn - 2))
+            ) {
               isProgrammaticEdit = true;
               editor.executeEdits("arrow-shortcut", [
                 {
@@ -514,8 +527,8 @@ export function MonacoPseudocodeEditor({
       colors: {
         "editor.background": "#1C1C1E",
         "editor.foreground": "#E5E5EA",
-        "editorLineNumber.foreground": "#48484A",
-        "editorLineNumber.activeForeground": "#98989D",
+        "editorLineNumber.foreground": "#98989D",
+        "editorLineNumber.activeForeground": "#E5E5EA",
         "editor.lineHighlightBackground": "#2C2C2E",
         "editorCursor.foreground": "#E5E5EA",
         "editor.selectionBackground": "#0A84FF30",
@@ -545,8 +558,8 @@ export function MonacoPseudocodeEditor({
       colors: {
         "editor.background": "#FFFFFF",
         "editor.foreground": "#111111",
-        "editorLineNumber.foreground": "#CFCFCF",
-        "editorLineNumber.activeForeground": "#6B7280",
+        "editorLineNumber.foreground": "#6E6E73",
+        "editorLineNumber.activeForeground": "#111111",
         "editor.lineHighlightBackground": "#F5F5F5",
         "editorCursor.foreground": "#111111",
         "editor.selectionBackground": "#0B6E4F2A",
@@ -594,6 +607,7 @@ export function MonacoPseudocodeEditor({
   );
 
   useEffect(() => {
+    markersRef.current = markers;
     if (!monacoRef.current || !editorRef.current) {
       return;
     }
@@ -639,7 +653,7 @@ export function MonacoPseudocodeEditor({
       loading={
         <div className="flex h-full min-h-[240px] items-center justify-center bg-[var(--bg)] text-sm font-medium text-[var(--text2)]">
           <LoaderCircle className="mr-2 animate-spin" size={16} />
-          Loading editor
+          {t.loading.editor}
         </div>
       }
     />

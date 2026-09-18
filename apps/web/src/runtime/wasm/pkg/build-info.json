@@ -1,0 +1,11 @@
+{
+  "note": "Written by scripts/build-runtime-wasm.sh, verified by scripts/check-wasm-provenance.mjs.",
+  "rustc": "1.97.1",
+  "wasmBindgen": "0.2.121",
+  "sha256": {
+    "lib": "432c23080c5f78ea984fb59818a010650cd271668aa47ad2a81adf73456b711e",
+    "cargoToml": "31da09745e2b0287490cba4a1ee68cac8194cfa958fd7ce75316ccef3851d420",
+    "cargoLock": "8b9112ff5ef3db8138e3a25e6364955a155938b3051ce322b244c94fa79a49e5",
+    "wasm": "268889aee379aa2230c28bb9a0673ad8a23ba84d7512830eb96cda29faf06d7d"
+  }
+}

@@ -1,5 +1,0 @@
-Contact: https://github.com/The1UNeed/pseudo.build/security/advisories/new
-Policy: https://pseudo.build/security
-Preferred-Languages: en
-Canonical: https://pseudo.build/.well-known/security.txt
-Expires: 2027-09-06T00:00:00.000Z

@@ -28,6 +28,8 @@ export interface RunRequest {
   astJson: string;
   stdinLines: string[];
   virtualFiles: Record<string, string[]>;
+  /** Seeds RANDOM. Reuse one value across the INPUT replays of a single Run. */
+  seed?: number;
 }
 
 export interface RunResult {
@@ -303,7 +305,4 @@ export interface ProcedureSignature {
 
 export interface SemanticResult {
   diagnostics: Diagnostic[];
-  symbolTypes: Record<string, StaticType>;
-  functionSignatures: Record<string, FunctionSignature>;
-  procedureSignatures: Record<string, ProcedureSignature>;
 }

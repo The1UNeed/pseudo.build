@@ -2,8 +2,9 @@
 
 import React, { memo } from 'react';
 import { Handle, Position, NodeProps } from '@xyflow/react';
-import { getNodePrimaryText, getProcessStatements } from './model';
+import { getNodePrimaryText, getProcessStatements, getTerminatorKind } from './model';
 import { FlowchartNodeData } from './types';
+import { useDictionary } from '@/i18n/context';
 
 // Custom node components for each IGCSE flowchart symbol
 
@@ -11,12 +12,10 @@ const HANDLE_CLASS_NAME =
   '!z-20 !pointer-events-auto !w-2.5 !h-2.5 !bg-[var(--bg)] !border-2 !border-[var(--text)] transition-colors hover:!bg-[var(--accent)]';
 
 const BaseNode = memo(({
-  selected,
   children,
   style,
   hideDefaultHandles = false,
 }: {
-  selected: boolean;
   children: React.ReactNode;
   style?: React.CSSProperties;
   hideDefaultHandles?: boolean;
@@ -51,11 +50,14 @@ BaseNode.displayName = 'BaseNode';
 
 // Terminator Node - Rounded Rectangle (Start/Stop)
 export const TerminatorNode = memo((props: NodeProps) => {
-  const { data, selected } = props;
-  const nodeData = data as FlowchartNodeData;
-  
+  const t = useDictionary().editor;
+  const nodeData = props.data as FlowchartNodeData;
+  const kind = getTerminatorKind(nodeData);
+  // Default English labels are data; show them in the current locale.
+  const label = nodeData.label === (kind === 'start' ? 'Start' : 'End') ? t.flowchart.palette[kind].title : nodeData.label;
+
   return (
-    <BaseNode selected={selected}>
+    <BaseNode>
       <div
         className="flex items-center justify-center px-8 py-3"
         style={{
@@ -66,7 +68,7 @@ export const TerminatorNode = memo((props: NodeProps) => {
           minWidth: '140px',
         }}
       >
-        <span className="font-medium text-sm">{nodeData.label}</span>
+        <span className="font-medium text-sm">{label}</span>
       </div>
     </BaseNode>
   );
@@ -75,12 +77,12 @@ TerminatorNode.displayName = 'TerminatorNode';
 
 // Process Node - Rectangle
 export const ProcessNode = memo((props: NodeProps) => {
-  const { data, selected } = props;
-  const nodeData = data as FlowchartNodeData;
+  const t = useDictionary().editor;
+  const nodeData = props.data as FlowchartNodeData;
   const statements = getProcessStatements(nodeData);
-  
+
   return (
-    <BaseNode selected={selected}>
+    <BaseNode>
       <div
         className="min-w-[220px] max-w-[300px] px-5 py-4"
         style={{
@@ -94,7 +96,7 @@ export const ProcessNode = memo((props: NodeProps) => {
         <div className="flex flex-col gap-3">
           <div className="flex items-center justify-between gap-3">
             <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--bg)]">
-              Process
+              {t.flowchart.process}
             </span>
             {nodeData.label ? (
               <span className="text-xs font-medium text-[var(--bg)]">{nodeData.label}</span>
@@ -115,7 +117,7 @@ export const ProcessNode = memo((props: NodeProps) => {
           ) : (
             <div className="rounded-lg border border-dashed border-[var(--bg)] px-3 py-4 text-center">
               <span className="block text-xs leading-5 text-[var(--bg)]">
-                Select this block and add lines inside it.
+                {t.flowchart.processEmpty}
               </span>
             </div>
           )}
@@ -128,15 +130,12 @@ ProcessNode.displayName = 'ProcessNode';
 
 // Decision Node - Diamond
 export const DecisionNode = memo((props: NodeProps) => {
-  const { data, selected } = props;
-  const nodeData = data as FlowchartNodeData;
-  const content = getNodePrimaryText(nodeData) || 'Condition';
-  
+  const t = useDictionary().editor;
+  const nodeData = props.data as FlowchartNodeData;
+  const content = getNodePrimaryText(nodeData) || t.flowchart.condition;
+
   return (
-    <BaseNode 
-      selected={selected}
-      hideDefaultHandles
-    >
+    <BaseNode hideDefaultHandles>
         <div className="relative" style={{ width: 140, height: 140 }}>
         {/* Diamond shape using SVG for proper geometry */}
         <svg
@@ -210,13 +209,13 @@ DecisionNode.displayName = 'DecisionNode';
 
 // Input/Output Node - Parallelogram
 export const InputOutputNode = memo((props: NodeProps) => {
-  const { data, selected } = props;
-  const nodeData = data as FlowchartNodeData;
+  const t = useDictionary().editor;
+  const nodeData = props.data as FlowchartNodeData;
   const isInput = nodeData.ioType !== 'output';
   const content = getNodePrimaryText(nodeData) || (isInput ? 'Value' : '"Result"');
 
   return (
-    <BaseNode selected={selected}>
+    <BaseNode>
       <div
         className="relative flex flex-col items-center justify-center gap-2 px-5 py-3 text-center"
         style={{
@@ -227,7 +226,7 @@ export const InputOutputNode = memo((props: NodeProps) => {
         }}
       >
         <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--bg)]">
-          {isInput ? 'Input' : 'Output'}
+          {isInput ? t.flowchart.input : t.flowchart.output}
         </span>
         <span className="font-medium text-sm leading-5" style={{ color: 'var(--bg)' }}>
           {content}
@@ -240,12 +239,12 @@ InputOutputNode.displayName = 'InputOutputNode';
 
 // Subroutine Node - Rectangle with side bars
 export const SubroutineNode = memo((props: NodeProps) => {
-  const { data, selected } = props;
-  const nodeData = data as FlowchartNodeData;
-  const content = getNodePrimaryText(nodeData) || nodeData.label;
-  
+  const t = useDictionary().editor;
+  const nodeData = props.data as FlowchartNodeData;
+  const content = getNodePrimaryText(nodeData) || t.flowchart.nodeTypes.subroutine.label;
+
   return (
-    <BaseNode selected={selected}>
+    <BaseNode>
       <div className="relative" style={{ width: 180, height: 80 }}>
         {/* Main rectangle */}
         <div

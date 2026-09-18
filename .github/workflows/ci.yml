@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Typecheck, lint, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0 (version from packageManager)
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      # Vitest with coverage thresholds. Cargo tests run in the rust job.
+      - run: pnpm test:coverage
+      - run: pnpm test:convex
+      - run: pnpm build
+
+  rust:
+    name: Runtime tests and clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: rustup toolchain install && rustup component add clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: cargo test -p pseudocode-runtime
+      - run: cargo clippy -p pseudocode-runtime -- -D warnings
+
+  wasm:
+    name: Committed WASM matches source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - run: rustup toolchain install && rustup target add wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
+        with:
+          tool: wasm-bindgen@0.2.121
+      # The binary is byte-identical only when rebuilt on the same OS, so check the
+      # recorded source hashes, then rebuild to prove the source still compiles and
+      # the (deterministic) JS glue matches.
+      - run: node scripts/check-wasm-provenance.mjs
+      - run: ./scripts/build-runtime-wasm.sh
+      - run: git diff --exit-code -- apps/web/src/runtime/wasm/pkg/pseudocode_runtime.js apps/web/src/runtime/wasm/pkg/pseudocode_runtime.d.ts apps/web/src/runtime/wasm/pkg/pseudocode_runtime_bg.wasm.d.ts

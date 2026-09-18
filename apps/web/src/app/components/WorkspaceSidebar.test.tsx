@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createDefaultWorkspace,
@@ -117,7 +117,7 @@ describe("WorkspaceSidebar", () => {
       });
 
       expect(screen.getByRole("menu", { name: "Explorer actions" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Rename" })).toBeInTheDocument();
+      expect(screen.getByRole("menuitem", { name: "Rename" })).toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }
@@ -126,8 +126,8 @@ describe("WorkspaceSidebar", () => {
   it("keeps the multi-selection when opening the context menu on a selected row", () => {
     const props = renderSidebar();
 
-    fireEvent.click(screen.getByRole("button", { name: "main.pseudo" }));
-    fireEvent.click(screen.getByRole("button", { name: "second.pseudo" }), { shiftKey: true });
+    fireEvent.click(screen.getByRole("treeitem", { name: "main.pseudo" }));
+    fireEvent.click(screen.getByRole("treeitem", { name: "second.pseudo" }), { shiftKey: true });
     fireEvent.contextMenu(getExplorerRow("second.pseudo"), {
       clientX: 120,
       clientY: 120,
@@ -135,7 +135,7 @@ describe("WorkspaceSidebar", () => {
 
     expect(screen.getByText("2 items selected")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete 2 items" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete 2 items" }));
 
     expect(props.onDeleteNodes).toHaveBeenCalledWith(["doc-main", "doc-second"]);
   });
@@ -170,7 +170,7 @@ describe("WorkspaceSidebar", () => {
 
       expect(screen.getByText("2 items selected")).toBeInTheDocument();
 
-      fireEvent.click(screen.getByRole("button", { name: "Delete 2 items" }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Delete 2 items" }));
 
       expect(props.onDeleteNodes).toHaveBeenCalledWith(["doc-main", "doc-second"]);
     } finally {
@@ -188,7 +188,7 @@ describe("WorkspaceSidebar", () => {
       </div>,
     );
 
-    const disclosureButton = screen.getByRole("button", { name: "Expand Archive" });
+    const disclosureButton = getExplorerRow("Archive").querySelector<HTMLElement>("[data-disclosure]")!;
 
     fireEvent.pointerDown(disclosureButton, {
       pointerType: "mouse",
@@ -288,7 +288,7 @@ describe("WorkspaceSidebar", () => {
 
     try {
       const props = renderSidebar();
-      const mainButton = screen.getByRole("button", { name: "main.pseudo" });
+      const mainButton = screen.getByText("main.pseudo");
       const archiveRow = getExplorerRow("Archive");
 
       const elementFromPoint = vi.fn(() => archiveRow);
@@ -340,6 +340,43 @@ describe("WorkspaceSidebar", () => {
       restoreProperty(window.navigator, "maxTouchPoints", originalMaxTouchPointsDescriptor);
       window.matchMedia = originalMatchMedia;
     }
+  });
+
+  it("navigates the tree by keyboard and opens the context menu with Shift+F10", () => {
+    const props = renderSidebar();
+    const tree = screen.getByRole("tree", { name: "Explorer" });
+    const items = within(tree).getAllByRole("treeitem");
+    const main = screen.getByRole("treeitem", { name: "main.pseudo" });
+
+    // Exactly one tree item is in the Tab order.
+    expect(items.filter((item) => item.getAttribute("tabindex") === "0")).toHaveLength(1);
+
+    act(() => main.focus());
+    fireEvent.keyDown(main, { key: "End" });
+    expect(items[items.length - 1]).toHaveFocus();
+    expect(items[items.length - 1]).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(document.activeElement!, { key: "Home" });
+    expect(items[0]).toHaveFocus();
+    fireEvent.keyDown(items[0], { key: "ArrowDown" });
+    expect(items[1]).toHaveFocus();
+
+    const archive = screen.getByRole("treeitem", { name: "Archive" });
+    act(() => archive.focus());
+    expect(archive).toHaveAttribute("aria-expanded", "false");
+    fireEvent.keyDown(archive, { key: "ArrowRight" });
+    expect(props.onExpandFolder).toHaveBeenCalledWith("folder-archive");
+
+    fireEvent.keyDown(archive, { key: "F10", shiftKey: true });
+    const menu = screen.getByRole("menu", { name: "Explorer actions" });
+    const menuItems = within(menu).getAllByRole("menuitem").filter((item) => !item.hasAttribute("disabled"));
+    expect(menuItems[0]).toHaveFocus();
+
+    fireEvent.keyDown(menuItems[0], { key: "ArrowUp" });
+    expect(within(menu).getByRole("menuitem", { name: "Delete" })).toHaveFocus();
+
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(archive).toHaveFocus();
   });
 
   it("keeps explorer rows draggable on non-touch desktops", async () => {

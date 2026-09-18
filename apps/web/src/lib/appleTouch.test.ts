@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isAppleTouchDevice, supportsDesktopNativeDragAndDrop } from "@/lib/appleTouch";
+import { getTouchLayout, isAppleTouchDevice, supportsDesktopNativeDragAndDrop } from "@/lib/appleTouch";
 import { getPseudocodeEditorOptions } from "@/lib/pseudocodeEditorOptions";
 
 describe("appleTouch platform helpers", () => {
@@ -58,6 +58,13 @@ describe("appleTouch platform helpers", () => {
         maxTouchPoints: 0,
       }),
     ).toBe(true);
+  });
+
+  it("picks the touch layout from viewport width and pointer type, not the user agent", () => {
+    expect(getTouchLayout(390, true)).toBe("phone");
+    expect(getTouchLayout(600, false)).toBe("phone");
+    expect(getTouchLayout(1024, true)).toBe("tablet");
+    expect(getTouchLayout(1280, false)).toBeNull();
   });
 
   it("disables Monaco editContext on Apple touch devices", () => {

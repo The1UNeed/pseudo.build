@@ -134,16 +134,20 @@
   --surface3: #48484A;
   --separator: #38383A;
   --text: #FFFFFF;
-  --text2: #98989D;
-  --text3: #636366;
+  --text2: #AEAEB2;
+  --text3: #9C9CA1;
   --accent: #0A84FF;
   --green: #30D158;
   --red: #FF453A;
+  /* Ink on accent/green/red fills. White is below 4.5:1 on the bright dark-theme fills. */
+  --on-accent: #111111;
+  --on-green: #111111;
+  --on-red: #111111;
   --orange: #FF9F0A;
   --yellow: #FFD60A;
   --selected: rgba(10, 132, 255, 0.19);
   --hover: rgba(255, 255, 255, 0.04);
-  --line-num: #48484A;
+  --line-num: #98989D;
   --traffic-red: #FF5F57;
   --traffic-yellow: #FEBC2E;
   --traffic-green: #28C840;
@@ -216,15 +220,18 @@
   --separator: #E5E5E5;
   --text: #111111;
   --text2: #4B5563;
-  --text3: #9CA3AF;
+  --text3: #666B73;
   --accent: #0B6E4F;
-  --green: #0B8F55;
+  --green: #087A48;
   --red: #C03B2B;
+  --on-accent: #FFFFFF;
+  --on-green: #FFFFFF;
+  --on-red: #FFFFFF;
   --orange: #B45309;
   --yellow: #CA8A04;
   --selected: rgba(11, 110, 79, 0.14);
   --hover: rgba(17, 17, 17, 0.04);
-  --line-num: #CFCFCF;
+  --line-num: #6E6E73;
   --traffic-red: #D95C52;
   --traffic-yellow: #D6A33F;
   --traffic-green: #55A66F;
@@ -292,6 +299,15 @@ button {
 
 .app-no-drag {
   -webkit-app-region: no-drag;
+}
+
+/* Preflight resets margin to 0, which would pin native modal dialogs to the top-left corner. */
+.app-dialog {
+  margin: auto;
+}
+
+.app-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.55);
 }
 
 .window-dot {
@@ -912,11 +928,13 @@ a.site-card:hover,
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .site *,
-  .site *::before,
-  .site *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -1107,18 +1125,8 @@ a.site-card:hover,
   }
 }
 
-/* Entrance animation */
-@keyframes manualCardEnter {
-  from {
-    opacity: 0;
-    transform: translateY(16px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.manual-card-enter {
-  animation: manualCardEnter 500ms cubic-bezier(0.22, 1, 0.36, 1) both;
+/* Simplified Chinese pages: keep Inter for Latin glyphs, fall through to system CJK fonts. */
+:root:lang(zh),
+:root[data-theme]:lang(zh) {
+  --font-sans: "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", "Noto Sans SC";
 }
