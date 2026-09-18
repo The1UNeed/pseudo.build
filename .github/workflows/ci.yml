@@ -2,6 +2,7 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
@@ -53,5 +54,9 @@ jobs:
       - uses: taiki-e/install-action@3f74d7c16a4242f1c95561e98edc25d36adb4375 # v2.87.12
         with:
           tool: wasm-bindgen@0.2.121
+      # The binary is byte-identical only when rebuilt on the same OS, so check the
+      # recorded source hashes, then rebuild to prove the source still compiles and
+      # the (deterministic) JS glue matches.
+      - run: node scripts/check-wasm-provenance.mjs
       - run: ./scripts/build-runtime-wasm.sh
-      - run: git diff --exit-code apps/web/src/runtime/wasm/pkg
+      - run: git diff --exit-code -- apps/web/src/runtime/wasm/pkg/pseudocode_runtime.js apps/web/src/runtime/wasm/pkg/pseudocode_runtime.d.ts apps/web/src/runtime/wasm/pkg/pseudocode_runtime_bg.wasm.d.ts

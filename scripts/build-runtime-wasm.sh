@@ -101,3 +101,27 @@ fs.writeFileSync(
   source.replace(needle, replacement).replace(fetchNeedle, "module_or_path = globalThis.fetch(module_or_path);"),
 );
 JS
+
+# Record what this binary was built from. Rebuilds are byte-identical on the same
+# OS but not across operating systems, so CI checks these hashes instead of the bytes.
+RUSTC_VERSION="$("${CARGO[@]}" --version | awk '{print $2}')"
+node - "$ROOT_DIR" "$OUT_DIR" "$RUSTC_VERSION" "$WASM_BINDGEN_VERSION" <<'JS'
+const fs = require("node:fs");
+const path = require("node:path");
+const { createHash } = require("node:crypto");
+const [root, outDir, rustc, wasmBindgen] = process.argv.slice(2);
+const sha = (file) => createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+const info = {
+  note: "Written by scripts/build-runtime-wasm.sh, verified by scripts/check-wasm-provenance.mjs.",
+  rustc,
+  wasmBindgen,
+  sha256: {
+    lib: sha(path.join(root, "packages/pseudocode-runtime/src/lib.rs")),
+    cargoToml: sha(path.join(root, "packages/pseudocode-runtime/Cargo.toml")),
+    cargoLock: sha(path.join(root, "Cargo.lock")),
+    wasm: sha(path.join(outDir, "pseudocode_runtime_bg.wasm")),
+  },
+};
+fs.writeFileSync(path.join(outDir, "build-info.json"), `${JSON.stringify(info, null, 2)}\n`);
+console.log("Wrote pkg/build-info.json");
+JS
