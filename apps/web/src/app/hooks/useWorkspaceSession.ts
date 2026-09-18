@@ -26,6 +26,8 @@ import {
   setEditorPanelActiveDocument,
   setExpandedFolders,
   setFilesPanelSelection,
+  setWorkspaceSyntax,
+  type WorkspaceSyntaxId,
   splitEditorPanel,
   type CompileSummary,
   type WorkspaceDockPosition,
@@ -751,12 +753,14 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
     if (!document) {
       return null;
     }
-    const cacheKey = getCompileCacheKey(document.id, document.name, document.source);
+    const syntaxId = currentWorkspace.syntaxId ?? "cambridge-igcse";
+    const cacheKey = getCompileCacheKey(document.id, document.name, document.source, syntaxId);
     const compileRun = await compilePseudocodeInWorker(
       {
         source: document.source,
         filename: document.name,
         strict: true,
+        syntaxId,
       },
       cacheKey,
     );
@@ -964,6 +968,13 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
   const selectDocument = useCallback(
     (documentId: string) => {
       applyWorkspaceUpdate((current) => openDocumentInFocusedEditor(current, documentId), "immediate");
+    },
+    [applyWorkspaceUpdate],
+  );
+
+  const setSyntaxId = useCallback(
+    (syntaxId: WorkspaceSyntaxId) => {
+      applyWorkspaceUpdate((current) => setWorkspaceSyntax(current, syntaxId), "immediate");
     },
     [applyWorkspaceUpdate],
   );
@@ -1218,6 +1229,8 @@ export function useWorkspaceSession(defaultSource: string, options: WorkspaceSes
     preloadRunRuntime,
     saveWorkspaceNow,
     clearTerminal,
+    syntaxId: workspace?.syntaxId ?? "cambridge-igcse",
+    setSyntaxId,
     selectDocument,
     handleDocumentSourceChange,
     toggleFolder,

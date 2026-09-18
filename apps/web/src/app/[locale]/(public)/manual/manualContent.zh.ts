@@ -19,7 +19,7 @@ export const manualZh: ManualContentData = {
     notationBeforeCode: "Cambridge 官方示例使用向左箭头表示赋值。在本编译器/编辑器中，请将赋值写成 ",
     notationAfterCode: "。",
     editorSupportTitle: "编辑器支持",
-    editorSupport: "编辑器的自动补全包含 DIV、MOD、LENGTH、LCASE、UCASE、SUBSTRING、ROUND 和 RANDOM，因此你可以在输入时直接使用考试规定的函数语法。",
+    editorSupport: "设置中的考试语法选项支持 Cambridge IGCSE、Cambridge A Level、IB、OCR 和 AQA。自动补全会跟随你选择的考试局，包括 DIV、MOD、LENGTH 以及该考试局特有的例程。",
   },
   navigation: {
     title: "快速导航",

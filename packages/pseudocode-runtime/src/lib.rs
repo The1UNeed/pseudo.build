@@ -374,9 +374,10 @@ impl Runtime {
             "openfile" => {
                 let name = self.eval(required(statement, "fileIdentifier")?)?.display();
                 let mode = str_field(statement, "mode");
-                match mode.as_str() {
+                let pointer = match mode.as_str() {
                     "WRITE" => {
                         self.virtual_files.insert(name.clone(), Vec::new());
+                        0
                     }
                     "READ" if !self.virtual_files.contains_key(&name) => {
                         return Err(RuntimeError::at(
@@ -384,12 +385,13 @@ impl Runtime {
                             format!("File {name} does not exist"),
                         ));
                     }
+                    "APPEND" => self.virtual_files.entry(name.clone()).or_default().len(),
                     _ => {
                         self.virtual_files.entry(name.clone()).or_default();
+                        0
                     }
-                }
-                self.open_files
-                    .insert(name, FileHandle { mode, pointer: 0 });
+                };
+                self.open_files.insert(name, FileHandle { mode, pointer });
                 Ok(Flow::Continue)
             }
             "readfile" => {
@@ -506,6 +508,9 @@ impl Runtime {
         }
         let (a, b) = (left.to_f64(), right.to_f64());
         Ok(match op.as_str() {
+            "+" if is_text(&left) || is_text(&right) => {
+                Value::String(format!("{}{}", left.display(), right.display()))
+            }
             "+" => real_result(expression, a + b)?,
             "-" => real_result(expression, a - b)?,
             "*" => real_result(expression, a * b)?,
@@ -514,6 +519,25 @@ impl Runtime {
                     return Err(RuntimeError::at(expression, "Division by zero"));
                 }
                 real_result(expression, a / b)?
+            }
+            "DIV" | "MOD" => {
+                let divisor = right.to_i64();
+                if divisor == 0 {
+                    let message = if op == "DIV" {
+                        "Division by zero"
+                    } else {
+                        "Modulo by zero"
+                    };
+                    return Err(RuntimeError::at(expression, message));
+                }
+                // Both truncate toward zero: -7 DIV 2 = -3 and -7 MOD 2 = -1.
+                let dividend = left.to_i64();
+                let result = if op == "DIV" {
+                    dividend.checked_div(divisor)
+                } else {
+                    dividend.checked_rem(divisor)
+                };
+                return integer_result(expression, result);
             }
             "^" => real_result(expression, a.powf(b))?,
             "=" => Value::Boolean(values_equal(&left, &right)),
@@ -564,10 +588,16 @@ impl Runtime {
                 };
                 return integer_result(source, result);
             }
-            "LENGTH" => {
-                return Ok(Value::Integer(
-                    self.eval(arg(args, 0, source)?)?.display().chars().count() as i64,
-                ))
+            "LENGTH" | "LEN" => {
+                let value = self.eval(arg(args, 0, source)?)?;
+                return Ok(Value::Integer(match value {
+                    Value::Array(array) => array
+                        .bounds
+                        .iter()
+                        .map(|(lower, upper)| (upper - lower + 1).max(0))
+                        .product(),
+                    other => other.display().chars().count() as i64,
+                }));
             }
             "LCASE" => {
                 return Ok(Value::String(
@@ -586,6 +616,63 @@ impl Runtime {
                 return Ok(Value::String(
                     text.chars().skip(start).take(length).collect(),
                 ));
+            }
+            "LEFT" => {
+                let text = self.eval(arg(args, 0, source)?)?.display();
+                let length = self.eval(arg(args, 1, source)?)?.to_i64().max(0) as usize;
+                return Ok(Value::String(text.chars().take(length).collect()));
+            }
+            "RIGHT" => {
+                let text = self.eval(arg(args, 0, source)?)?.display();
+                let length = self.eval(arg(args, 1, source)?)?.to_i64().max(0) as usize;
+                let count = text.chars().count();
+                let skip = count.saturating_sub(length);
+                return Ok(Value::String(text.chars().skip(skip).collect()));
+            }
+            "MID" => {
+                let text = self.eval(arg(args, 0, source)?)?.display();
+                let start = self.eval(arg(args, 1, source)?)?.to_i64().max(1) as usize - 1;
+                let length = self.eval(arg(args, 2, source)?)?.to_i64().max(0) as usize;
+                return Ok(Value::String(
+                    text.chars().skip(start).take(length).collect(),
+                ));
+            }
+            "INT" => return Ok(Value::Integer(self.eval(arg(args, 0, source)?)?.to_i64())),
+            "STR" => return Ok(Value::String(self.eval(arg(args, 0, source)?)?.display())),
+            "FLOAT" => return Ok(Value::Real(self.eval(arg(args, 0, source)?)?.to_f64())),
+            "ASC" => {
+                let text = self.eval(arg(args, 0, source)?)?.display();
+                return Ok(Value::Integer(
+                    text.chars().next().map(|ch| ch as i64).unwrap_or(0),
+                ));
+            }
+            "CHR" => {
+                let code = self.eval(arg(args, 0, source)?)?.to_i64() as u32;
+                return Ok(Value::String(
+                    char::from_u32(code).map(String::from).unwrap_or_default(),
+                ));
+            }
+            "POSITION" => {
+                let haystack = self.eval(arg(args, 0, source)?)?.display();
+                let needle = self.eval(arg(args, 1, source)?)?.display();
+                let position = haystack
+                    .find(&needle)
+                    .map(|index| index as i64 + 1)
+                    .unwrap_or(0);
+                return Ok(Value::Integer(position));
+            }
+            "RAND" => {
+                let max = self.eval(arg(args, 0, source)?)?.to_i64().max(0);
+                self.rng_state = self
+                    .rng_state
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1);
+                let draw = (self.rng_state >> 11) as i64;
+                let value = match max.checked_add(1) {
+                    Some(range) => draw % range,
+                    None => draw,
+                };
+                return Ok(Value::Integer(value));
             }
             "ROUND" => {
                 let value = self.eval(arg(args, 0, source)?)?.to_f64();
@@ -753,10 +840,23 @@ impl Runtime {
                     .map_err(|message| RuntimeError::at(target, message));
             }
         }
-        Err(RuntimeError::at(
-            target,
-            format!("\"{name}\" is not an array"),
-        ))
+        let bounds = indices
+            .iter()
+            .map(|&index| {
+                let lower = if index < 0 { index } else { 0 };
+                (lower, index.max(1023))
+            })
+            .collect::<Vec<_>>();
+        let mut array = PseudoArray {
+            bounds,
+            default: Box::new(default_value(&value.type_name())),
+            store: HashMap::new(),
+        };
+        array
+            .set(indices, value)
+            .map_err(|message| RuntimeError::at(target, message))?;
+        self.assign_name(&name, Value::Array(array));
+        Ok(())
     }
 
     fn indices(&mut self, target: &JsonValue) -> RuntimeResult<Vec<i64>> {
@@ -811,7 +911,7 @@ impl Runtime {
             .open_files
             .get(name)
             .ok_or_else(|| RuntimeError::at(source, format!("File {name} is not open")))?;
-        if handle.mode != "WRITE" {
+        if handle.mode != "WRITE" && handle.mode != "APPEND" {
             return Err(RuntimeError::at(
                 source,
                 format!("File {name} not opened in WRITE mode"),
@@ -968,6 +1068,10 @@ impl RuntimeError {
                 .unwrap_or(1) as usize,
         )
     }
+}
+
+fn is_text(value: &Value) -> bool {
+    matches!(value, Value::String(_))
 }
 
 fn default_value(type_name: &str) -> Value {
@@ -1683,5 +1787,88 @@ mod tests {
         runtime.execute_main().unwrap();
         assert_eq!(runtime.lookup("N"), Some(Value::Integer(4)));
         assert_eq!(runtime.stdout, vec!["4".to_string()]);
+    }
+
+    // Merge: exam-board APPEND mode keeps the existing lines.
+    #[test]
+    fn append_mode_adds_to_an_existing_file() {
+        let result = run(program(vec![
+            json!({"kind":"openfile","fileIdentifier":string("A.txt"),"mode":"WRITE","span":span()}),
+            json!({"kind":"writefile","fileIdentifier":string("A.txt"),"value":string("one"),"span":span()}),
+            json!({"kind":"closefile","fileIdentifier":string("A.txt"),"span":span()}),
+            json!({"kind":"openfile","fileIdentifier":string("A.txt"),"mode":"APPEND","span":span()}),
+            json!({"kind":"writefile","fileIdentifier":string("A.txt"),"value":string("two"),"span":span()}),
+            json!({"kind":"closefile","fileIdentifier":string("A.txt"),"span":span()}),
+        ]));
+        assert!(result.success, "{}", result.stderr);
+        assert_eq!(
+            result.virtual_files.get("A.txt"),
+            Some(&vec!["one".to_string(), "two".to_string()])
+        );
+    }
+
+    // Merge: the DIV/MOD operators follow the same rules as the DIV/MOD functions.
+    #[test]
+    fn div_and_mod_operators_truncate_toward_zero() {
+        let result = run_output(vec![
+            binary("DIV", int(-7), int(2)),
+            string(" "),
+            binary("MOD", int(-7), int(2)),
+            string(" "),
+            binary("DIV", int(7), int(-2)),
+            string(" "),
+            binary("MOD", int(7), int(-2)),
+        ]);
+        assert!(result.success, "{}", result.stderr);
+        assert_eq!(result.stdout, "-3 -1 -3 1");
+
+        let min = binary("-", binary("-", int(0), int(i64::MAX)), int(1));
+        assert_error(
+            &run_output(vec![binary("DIV", min.clone(), int(-1))]),
+            "Integer overflow",
+        );
+        assert_error(
+            &run_output(vec![binary("MOD", min, int(-1))]),
+            "Integer overflow",
+        );
+        assert_error(
+            &run_output(vec![binary("DIV", int(1), int(0))]),
+            "Division by zero",
+        );
+        assert_error(
+            &run_output(vec![binary("MOD", int(1), int(0))]),
+            "Modulo by zero",
+        );
+    }
+
+    // Merge: boards that concatenate with "+" still get text, and numbers still get checked.
+    #[test]
+    fn plus_concatenates_text_and_still_checks_integers() {
+        let result = run_output(vec![binary("+", string("a"), int(2))]);
+        assert!(result.success, "{}", result.stderr);
+        assert_eq!(result.stdout, "a2");
+        assert_error(
+            &run_output(vec![binary("+", int(i64::MAX), int(1))]),
+            "Integer overflow",
+        );
+    }
+
+    // Merge: the LEN alias and array lengths survive alongside the bounds-checked arguments.
+    #[test]
+    fn len_alias_measures_strings_and_arrays() {
+        let result = run(program(vec![
+            json!({"kind":"declare","identifier":ident("A"),"typeNode":{"kind":"array","elementType":"INTEGER","dimensions":[{"lower":1,"upper":4}],"span":span()},"span":span()}),
+            output(vec![
+                call("LEN", vec![string("abc")]),
+                string(" "),
+                call("LENGTH", vec![ident("A")]),
+            ]),
+        ]));
+        assert!(result.success, "{}", result.stderr);
+        assert_eq!(result.stdout, "3 4");
+        assert_error(
+            &run_output(vec![call("LEN", vec![])]),
+            "Routine argument count mismatch",
+        );
     }
 }

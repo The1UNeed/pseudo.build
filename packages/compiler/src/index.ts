@@ -1,8 +1,20 @@
 import { analyzeProgram } from "./semantics";
 import { parseSource } from "./parser";
+import { resolveSyntax } from "./syntax";
 import { CompileRequest, CompileResult, Diagnostic } from "./types";
 
 export { parseSource } from "./parser";
+export {
+  DEFAULT_SYNTAX_ID,
+  SYNTAX_CATALOG,
+  SYNTAX_OPTIONS,
+  displayKeyword,
+  isSyntaxId,
+  resolveSyntax,
+  type KeywordCase,
+  type SyntaxDefinition,
+  type SyntaxId,
+} from "./syntax";
 
 /** Maximum source size in UTF-8 bytes. */
 export const MAX_SOURCE_BYTES = 256 * 1024;
@@ -36,12 +48,13 @@ export function compilePseudocode(request: CompileRequest): CompileResult {
     };
   }
 
-  const { ast, diagnostics: parseDiagnostics } = parseSource(request.source);
+  const syntax = resolveSyntax(request.syntaxId);
+  const { ast, diagnostics: parseDiagnostics } = parseSource(request.source, syntax);
   let semanticDiagnostics: Diagnostic[] = [];
   // Semantic checks on a partially parsed program mostly repeat the syntax errors.
   if (!parseDiagnostics.some((diagnostic) => diagnostic.severity === "error")) {
     try {
-      semanticDiagnostics = analyzeProgram(ast).diagnostics;
+      semanticDiagnostics = analyzeProgram(ast, syntax).diagnostics;
     } catch (error) {
       if (!(error instanceof RangeError)) {
         throw error;

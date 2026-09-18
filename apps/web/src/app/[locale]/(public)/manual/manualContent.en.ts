@@ -20,7 +20,7 @@ export const manualEn = {
     notationAfterCode: ".",
     editorSupportTitle: "Editor support",
     editorSupport:
-      "The editor autocomplete includes DIV, MOD, LENGTH, LCASE, UCASE, SUBSTRING, ROUND, and RANDOM, so the exam-style routine syntax is available while you type.",
+      "Settings has an Exam syntax control for Cambridge IGCSE, Cambridge A Level, IB, OCR, and AQA. Completions follow the board you pick, including DIV, MOD, LENGTH, and the extra routines that board uses.",
   },
   navigation: {
     title: "Quick Navigation",

@@ -1,3 +1,4 @@
+import { DEFAULT_SYNTAX_ID, resolveSyntax, type SyntaxDefinition } from "./syntax";
 import { Diagnostic, SourceSpan } from "./types";
 
 export type TokenType =
@@ -16,12 +17,15 @@ export type TokenType =
   | "RPAREN"
   | "LBRACKET"
   | "RBRACKET"
+  | "DOT"
+  | "AMPERSAND"
   | "PLUS"
   | "MINUS"
   | "STAR"
   | "SLASH"
   | "CARET"
   | "EQ"
+  | "EQEQ"
   | "LT"
   | "LTE"
   | "GT"
@@ -35,62 +39,6 @@ export interface Token {
   span: SourceSpan;
 }
 
-const KEYWORDS = new Set([
-  "DECLARE",
-  "CONSTANT",
-  "ARRAY",
-  "OF",
-  "INTEGER",
-  "REAL",
-  "CHAR",
-  "STRING",
-  "BOOLEAN",
-  "INPUT",
-  "OUTPUT",
-  "IF",
-  "THEN",
-  "ELSE",
-  "ENDIF",
-  "CASE",
-  "OTHERWISE",
-  "ENDCASE",
-  "FOR",
-  "TO",
-  "STEP",
-  "NEXT",
-  "REPEAT",
-  "UNTIL",
-  "WHILE",
-  "DO",
-  "ENDWHILE",
-  "PROCEDURE",
-  "ENDPROCEDURE",
-  "FUNCTION",
-  "RETURNS",
-  "ENDFUNCTION",
-  "CALL",
-  "RETURN",
-  "OPENFILE",
-  "READFILE",
-  "WRITEFILE",
-  "CLOSEFILE",
-  "READ",
-  "WRITE",
-  "TRUE",
-  "FALSE",
-  "AND",
-  "OR",
-  "NOT",
-  "DIV",
-  "MOD",
-  "LENGTH",
-  "LCASE",
-  "UCASE",
-  "SUBSTRING",
-  "ROUND",
-  "RANDOM",
-]);
-
 const SINGLE_CHAR_TOKENS: Record<string, TokenType> = {
   ":": "COLON",
   ",": "COMMA",
@@ -98,6 +46,8 @@ const SINGLE_CHAR_TOKENS: Record<string, TokenType> = {
   ")": "RPAREN",
   "[": "LBRACKET",
   "]": "RBRACKET",
+  ".": "DOT",
+  "&": "AMPERSAND",
   "+": "PLUS",
   "-": "MINUS",
   "*": "STAR",
@@ -112,15 +62,8 @@ const SINGLE_CHAR_TOKENS: Record<string, TokenType> = {
 const DOUBLE_QUOTES = '"“”';
 const SINGLE_QUOTES = "'‘’ꞌ";
 
-function startsToken(char: string): boolean {
-  return (
-    /[A-Za-z0-9 \t\r\n]/.test(char) ||
-    char in SINGLE_CHAR_TOKENS ||
-    DOUBLE_QUOTES.includes(char) ||
-    SINGLE_QUOTES.includes(char) ||
-    char === "←"
-  );
-}
+/** First characters of the multi-character operators handled above the fallback. */
+const OPERATOR_STARTS = "←≠≤≥!";
 
 function buildSpan(
   startLine: number,
@@ -131,8 +74,32 @@ function buildSpan(
   return { startLine, startColumn, endLine, endColumn };
 }
 
+/**
+ * Describes how `lexeme` breaks the syntax's casing rule for keyword `canonical`,
+ * or null when the casing is acceptable. The parser, not the tokenizer, decides
+ * whether a mis-cased word is a keyword or a name, so it owns the diagnostic.
+ */
+export function keywordCaseError(syntax: SyntaxDefinition, lexeme: string, canonical: string): string | null {
+  if (syntax.keywordCase === "upper" && lexeme !== canonical) {
+    return `Keyword "${canonical}" must be uppercase in ${syntax.shortLabel} syntax.`;
+  }
+  if (syntax.keywordCase === "lower" && lexeme !== canonical.toLowerCase()) {
+    return `Keyword "${canonical.toLowerCase()}" must be lowercase in ${syntax.shortLabel} syntax.`;
+  }
+  return null;
+}
+
+/** The spelling a keyword must use in this syntax. */
+export function expectedKeywordSpelling(syntax: SyntaxDefinition, canonical: string): string {
+  return syntax.keywordCase === "lower" ? canonical.toLowerCase() : canonical.toUpperCase();
+}
+
 /** Diagnostic columns are 1-based and inclusive at both ends. */
-export function tokenize(source: string): { tokens: Token[]; diagnostics: Diagnostic[] } {
+export function tokenize(
+  source: string,
+  syntaxInput: SyntaxDefinition | string = DEFAULT_SYNTAX_ID,
+): { tokens: Token[]; diagnostics: Diagnostic[] } {
+  const syntax = typeof syntaxInput === "string" ? resolveSyntax(syntaxInput) : syntaxInput;
   const diagnostics: Diagnostic[] = [];
   const tokens: Token[] = [];
 
@@ -185,6 +152,20 @@ export function tokenize(source: string): { tokens: Token[]; diagnostics: Diagno
     });
   };
 
+  const identifierContinue = (char: string) =>
+    syntax.identifierUnderscore ? /[A-Za-z0-9_]/.test(char) : /[A-Za-z0-9]/.test(char);
+
+  const singleQuotesAreChars = syntax.id === "cambridge-igcse" || syntax.id === "cambridge-alevel";
+
+  /** True when `char` could begin a token, so a run of bad characters stops here. */
+  const startsToken = (char: string) =>
+    /[A-Za-z0-9_ \t\r\n]/.test(char) ||
+    char in SINGLE_CHAR_TOKENS ||
+    DOUBLE_QUOTES.includes(char) ||
+    SINGLE_QUOTES.includes(char) ||
+    OPERATOR_STARTS.includes(char) ||
+    (char === "#" && syntax.comments.includes("#"));
+
   while (index < source.length) {
     const char = current();
 
@@ -201,7 +182,14 @@ export function tokenize(source: string): { tokens: Token[]; diagnostics: Diagno
       continue;
     }
 
-    if (char === "/" && peek() === "/") {
+    if (char === "/" && peek() === "/" && syntax.comments.includes("//")) {
+      while (current() !== "\n" && current() !== "\0") {
+        advance();
+      }
+      continue;
+    }
+
+    if (char === "#" && syntax.comments.includes("#")) {
       while (current() !== "\n" && current() !== "\0") {
         advance();
       }
@@ -235,6 +223,33 @@ export function tokenize(source: string): { tokens: Token[]; diagnostics: Diagno
       addToken("NEQ", "<>", startLine, startColumn, line, column - 1);
       continue;
     }
+    if (char === "!" && peek() === "=") {
+      advance();
+      advance();
+      addToken("NEQ", "!=", startLine, startColumn, line, column - 1);
+      continue;
+    }
+    if (char === "=" && peek() === "=") {
+      advance();
+      advance();
+      addToken("EQEQ", "==", startLine, startColumn, line, column - 1);
+      continue;
+    }
+    if (char === "≠") {
+      advance();
+      addToken("NEQ", "≠", startLine, startColumn, line, column - 1);
+      continue;
+    }
+    if (char === "≤") {
+      advance();
+      addToken("LTE", "≤", startLine, startColumn, line, column - 1);
+      continue;
+    }
+    if (char === "≥") {
+      advance();
+      addToken("GTE", "≥", startLine, startColumn, line, column - 1);
+      continue;
+    }
 
     if (SINGLE_CHAR_TOKENS[char]) {
       advance();
@@ -253,7 +268,9 @@ export function tokenize(source: string): { tokens: Token[]; diagnostics: Diagno
       }
       if (quotes.includes(current())) {
         advance();
-        if (!isString && [...text].length !== 1) {
+        // Only the Cambridge boards reserve single quotes for one-character CHARs;
+        // elsewhere 'abc' is an ordinary string, so the parser types it as STRING.
+        if (!isString && singleQuotesAreChars && [...text].length !== 1) {
           addError(
             "SYN082",
             "A CHAR literal must contain exactly one character.",
@@ -307,15 +324,15 @@ export function tokenize(source: string): { tokens: Token[]; diagnostics: Diagno
       continue;
     }
 
-    if (/[A-Za-z]/.test(char)) {
-      let lexeme = "";
-      while (/[A-Za-z0-9]/.test(current())) {
+    if (/[A-Za-z_]/.test(char)) {
+      let lexeme = advance();
+      while (identifierContinue(current())) {
         lexeme += advance();
       }
       const upper = lexeme.toUpperCase();
       // Keywords keep their original lexeme; the parser reports wrong casing
       // (or a reserved word used as a name) depending on where it appears.
-      if (KEYWORDS.has(upper)) {
+      if (syntax.keywords.has(upper)) {
         addToken("KEYWORD", lexeme, startLine, startColumn, line, column - 1, upper);
       } else {
         addToken("IDENTIFIER", lexeme, startLine, startColumn, line, column - 1);
@@ -334,7 +351,7 @@ export function tokenize(source: string): { tokens: Token[]; diagnostics: Diagno
       run.length === 1 ? `Unexpected character "${run}".` : `Unexpected characters "${shown}".`,
       startLine,
       startColumn,
-      "Remove the character or replace it with valid IGCSE pseudocode syntax.",
+      `Remove the character or replace it with valid ${syntax.shortLabel} pseudocode syntax.`,
     );
   }
 

@@ -11,6 +11,14 @@ import { autoCorrectPseudocodeLine, isAssignmentArrowPrefix } from "@/app/compon
 import { isAppleTouchDevice } from "@/lib/appleTouch";
 import { ensureMonacoNullCaretHitTestGuard } from "@/lib/monacoNullCaretHitTestGuard";
 import { getPseudocodeEditorOptions } from "@/lib/pseudocodeEditorOptions";
+import {
+  SYNTAX_OPTIONS,
+  keywordLookupForSyntax,
+  languageIdForSyntax,
+  resolveSyntax,
+  syntaxKeywords,
+  type SyntaxId,
+} from "@/lib/pseudocodeLanguages";
 import type { ResolvedTheme } from "@/lib/theme";
 
 interface MonacoPseudocodeEditorProps {
@@ -19,6 +27,7 @@ interface MonacoPseudocodeEditorProps {
   diagnostics: Diagnostic[];
   theme: ResolvedTheme;
   documentKey?: string;
+  syntaxId?: SyntaxId | string;
 }
 
 const TYPE_KEYWORDS = [
@@ -83,10 +92,6 @@ const FLOW_KEYWORDS = [
   "FALSE",
 ];
 
-const KEYWORDS = [...FLOW_KEYWORDS, ...TYPE_KEYWORDS, ...ROUTINE_KEYWORDS];
-
-const KEYWORD_LOOKUP = new Map(KEYWORDS.map((keyword) => [keyword.toLowerCase(), keyword]));
-
 const ROUTINE_SUGGESTIONS = [
   {
     label: "DIV(Number, Divisor)",
@@ -147,8 +152,13 @@ export function MonacoPseudocodeEditor({
   diagnostics,
   theme,
   documentKey,
+  syntaxId = "cambridge-igcse",
 }: MonacoPseudocodeEditorProps) {
   const t = useDictionary().editor;
+  const syntax = useMemo(() => resolveSyntax(syntaxId), [syntaxId]);
+  const languageId = languageIdForSyntax(syntax.id);
+  const keywordLookup = useMemo(() => keywordLookupForSyntax(syntax), [syntax]);
+  const keywordLookupRef = useRef(keywordLookup);
   const monacoRef = useRef<typeof import("monaco-editor") | null>(null);
   const editorRef = useRef<import("monaco-editor").editor.IStandaloneCodeEditor | null>(null);
   const touchFocusCleanupRef = useRef<(() => void) | null>(null);
@@ -188,26 +198,7 @@ export function MonacoPseudocodeEditor({
 
     if (!pseudocodeLanguageRegistered) {
       pseudocodeLanguageRegistered = true;
-      monaco.languages.register({ id: "igcse-pseudocode" });
-      monaco.languages.setMonarchTokensProvider("igcse-pseudocode", {
-        tokenizer: {
-          root: [
-            [/\/\/.*$/, "comment"],
-            [new RegExp(`\\b(${ROUTINE_KEYWORDS.join("|")})\\b`), "predefined"],
-            [new RegExp(`\\b(${TYPE_KEYWORDS.join("|")})\\b`), "type"],
-            [new RegExp(`\\b(${FLOW_KEYWORDS.join("|")})\\b`), "keyword"],
-            [/\b[0-9]+\.[0-9]+\b/, "number.float"],
-            [/\b[0-9]+\b/, "number"],
-            [/"[^"\\n]*"/, "string"],
-            [/'[^'\\n]*'/, "string"],
-            [/\u2190|<-/, "operator"],
-            [/<=|>=|<>|=|<|>|\+|-|\*|\/|\^/, "operator"],
-            [/\b[A-Za-z][A-Za-z0-9]*\b/, "identifier"],
-            [/[:,()\[\]]/, "delimiter"],
-          ],
-        },
-      });
-      monaco.languages.setLanguageConfiguration("igcse-pseudocode", {
+      const languageConfig = {
         brackets: [
           ["(", ")"],
           ["[", "]"],
@@ -224,13 +215,65 @@ export function MonacoPseudocodeEditor({
           { open: "(", close: ")" },
           { open: "[", close: "]" },
         ],
+      } as const;
+
+      for (const option of SYNTAX_OPTIONS) {
+        const id = languageIdForSyntax(option.id);
+        const keywords = syntaxKeywords(option).map((keyword) =>
+          option.keywordCase === "lower" ? keyword : keyword,
+        );
+        const pattern = keywords.map((keyword) => keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+        monaco.languages.register({ id });
+        monaco.languages.setMonarchTokensProvider(id, {
+          ignoreCase: option.keywordCase === "any",
+          tokenizer: {
+            root: [
+              [/#.*$/, "comment"],
+              [/\/\/.*$/, "comment"],
+              [new RegExp(`\\b(${pattern})\\b`), "keyword"],
+              [/\b[0-9]+\.[0-9]+\b/, "number.float"],
+              [/\b[0-9]+\b/, "number"],
+              [/"[^"\\n]*"/, "string"],
+              [/'[^'\\n]*'/, "string"],
+              [/\u2190|<-|==|!=|<>|<=|>=|\u2260|\u2264|\u2265|=|<|>|\+|-|\*|\/|\^|&/, "operator"],
+              [/\b[A-Za-z_][A-Za-z0-9_]*\b/, "identifier"],
+              [/[:,()\[\].]/, "delimiter"],
+            ],
+          },
+        });
+        monaco.languages.setLanguageConfiguration(id, languageConfig);
+      }
+
+      monaco.languages.register({ id: "igcse-pseudocode" });
+      monaco.languages.setMonarchTokensProvider("igcse-pseudocode", {
+        tokenizer: {
+          root: [
+            [/\/\/.*$/, "comment"],
+            [new RegExp(`\\b(${ROUTINE_KEYWORDS.join("|")})\\b`), "keyword"],
+            [new RegExp(`\\b(${TYPE_KEYWORDS.join("|")})\\b`), "type"],
+            [new RegExp(`\\b(${FLOW_KEYWORDS.join("|")})\\b`), "keyword"],
+            [/\b[0-9]+\.[0-9]+\b/, "number.float"],
+            [/\b[0-9]+\b/, "number"],
+            [/"[^"\\n]*"/, "string"],
+            [/'[^'\\n]*'/, "string"],
+            [/\u2190|<-/, "operator"],
+            [/<=|>=|<>|=|<|>|\+|-|\*|\/|\^/, "operator"],
+            [/\b[A-Za-z][A-Za-z0-9]*\b/, "identifier"],
+            [/[:,()\[\]]/, "delimiter"],
+          ],
+        },
       });
+      monaco.languages.setLanguageConfiguration("igcse-pseudocode", languageConfig);
     }
 
     if (!pseudocodeCompletionProviderRegistered) {
       pseudocodeCompletionProviderRegistered = true;
-      monaco.languages.registerCompletionItemProvider("igcse-pseudocode", {
+      monaco.languages.registerCompletionItemProvider({ language: "*" }, {
         provideCompletionItems(model: Monaco.editor.ITextModel, position: Monaco.Position) {
+          const modelLanguage = model.getLanguageId();
+          if (modelLanguage !== "igcse-pseudocode" && !modelLanguage.startsWith("pseudo-")) {
+            return { suggestions: [] };
+          }
           const text = completionTextRef.current ?? t.autocomplete;
           const word = model.getWordUntilPosition(position);
           const range = {
@@ -240,7 +283,11 @@ export function MonacoPseudocodeEditor({
             endColumn: word.endColumn,
           };
 
-          const keywordSuggestions = KEYWORDS.map((keyword, index) => ({
+          const activeSyntax =
+            SYNTAX_OPTIONS.find((option) => languageIdForSyntax(option.id) === modelLanguage) ??
+            resolveSyntax("cambridge-igcse");
+          const activeKeywords = syntaxKeywords(activeSyntax);
+          const keywordSuggestions = activeKeywords.map((keyword, index) => ({
             label: keyword,
             kind: monaco.languages.CompletionItemKind.Keyword,
             insertText: keyword,
@@ -308,7 +355,7 @@ export function MonacoPseudocodeEditor({
 
     const model = editor.getModel();
     if (model) {
-      monaco.editor.setModelLanguage(model, "igcse-pseudocode");
+      monaco.editor.setModelLanguage(model, languageId);
       monaco.editor.setModelMarkers(model, "igcse-compiler", markersRef.current);
     }
 
@@ -439,7 +486,7 @@ export function MonacoPseudocodeEditor({
       const edits: Monaco.editor.IIdentifiedSingleEditOperation[] = [];
       for (const lineNumber of affectedLines) {
         const lineContent = model.getLineContent(lineNumber);
-        const correctedLine = autoCorrectPseudocodeLine(lineContent, KEYWORD_LOOKUP);
+        const correctedLine = autoCorrectPseudocodeLine(lineContent, keywordLookupRef.current);
         if (correctedLine === lineContent) {
           continue;
         }
@@ -579,11 +626,25 @@ export function MonacoPseudocodeEditor({
     monacoRef.current.editor.setTheme(theme === "dark" ? "examLabThemeDark" : "examLabThemeLight");
   }, [theme]);
 
+  useEffect(() => {
+    keywordLookupRef.current = keywordLookup;
+  }, [keywordLookup]);
+
+  useEffect(() => {
+    const monaco = monacoRef.current;
+    const editor = editorRef.current;
+    const model = editor?.getModel();
+    if (!monaco || !model) {
+      return;
+    }
+    monaco.editor.setModelLanguage(model, languageId);
+  }, [languageId]);
+
   return (
     <Editor
       key={documentKey}
       height="100%"
-      defaultLanguage="igcse-pseudocode"
+      defaultLanguage={languageId}
       value={value}
       onChange={(nextValue) => onChange(nextValue ?? "")}
       beforeMount={handleBeforeMount}

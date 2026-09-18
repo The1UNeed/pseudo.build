@@ -1,5 +1,13 @@
 export const WORKSPACE_VERSION = 2;
 export const ROOT_FOLDER_ID = "root";
+export const DEFAULT_SYNTAX_ID = "cambridge-igcse";
+
+export type WorkspaceSyntaxId =
+  | "cambridge-igcse"
+  | "cambridge-alevel"
+  | "ib-dp"
+  | "ocr-gcse"
+  | "aqa-gcse";
 export const ROOT_FOLDER_NAME = "Explorer";
 export const DEFAULT_DOCUMENT_NAME = "main.pseudo";
 export const NEW_DOCUMENT_BASENAME = "Untitled.pseudo";
@@ -106,6 +114,7 @@ export interface WorkspaceState {
   layout: WorkspaceLayoutNode;
   lastFocusedEditorPanelId: string | null;
   lastFocusedTerminalPanelId: string | null;
+  syntaxId: WorkspaceSyntaxId;
 }
 
 interface WorkspaceStateV1 {
@@ -247,6 +256,7 @@ export function createDefaultWorkspace(options: CreateWorkspaceOptions): Workspa
     layout: docking.layout,
     lastFocusedEditorPanelId: docking.lastFocusedEditorPanelId,
     lastFocusedTerminalPanelId: docking.lastFocusedTerminalPanelId,
+    syntaxId: DEFAULT_SYNTAX_ID,
   });
 }
 
@@ -278,6 +288,7 @@ export function createEmptyWorkspace(now?: string): WorkspaceState {
     layout: docking.layout,
     lastFocusedEditorPanelId: docking.lastFocusedEditorPanelId,
     lastFocusedTerminalPanelId: docking.lastFocusedTerminalPanelId,
+    syntaxId: DEFAULT_SYNTAX_ID,
   });
 }
 
@@ -383,6 +394,7 @@ export function validateWorkspaceState(raw: unknown): WorkspaceState | null {
       typeof candidate.lastFocusedEditorPanelId === "string" ? candidate.lastFocusedEditorPanelId : null,
     lastFocusedTerminalPanelId:
       typeof candidate.lastFocusedTerminalPanelId === "string" ? candidate.lastFocusedTerminalPanelId : null,
+    syntaxId: coerceSyntaxId(candidate.syntaxId),
   });
 }
 
@@ -739,6 +751,13 @@ export function setDocumentCompileSummary(
     updatedAt: timestamp,
   };
   return next;
+}
+
+export function setWorkspaceSyntax(state: WorkspaceState, syntaxId: WorkspaceSyntaxId, now?: string): WorkspaceState {
+  return normalizeWorkspace({
+    ...cloneState(state),
+    syntaxId: coerceSyntaxId(syntaxId),
+  }, now);
 }
 
 export function setExpandedFolders(state: WorkspaceState, folderIds: string[]): WorkspaceState {
@@ -1424,6 +1443,7 @@ function normalizeWorkspace(state: WorkspaceState, now?: string): WorkspaceState
     next.activeDocumentId = activeEditor.activeDocumentId;
   }
 
+  next.syntaxId = coerceSyntaxId(next.syntaxId);
   return next;
 }
 
@@ -1448,7 +1468,21 @@ function migrateWorkspaceStateV1(raw: unknown, now?: string): WorkspaceState | n
     layout: docking.layout,
     lastFocusedEditorPanelId: docking.lastFocusedEditorPanelId,
     lastFocusedTerminalPanelId: docking.lastFocusedTerminalPanelId,
+    syntaxId: DEFAULT_SYNTAX_ID,
   });
+}
+
+function coerceSyntaxId(value: unknown): WorkspaceSyntaxId {
+  if (
+    value === "cambridge-igcse" ||
+    value === "cambridge-alevel" ||
+    value === "ib-dp" ||
+    value === "ocr-gcse" ||
+    value === "aqa-gcse"
+  ) {
+    return value;
+  }
+  return DEFAULT_SYNTAX_ID;
 }
 
 function validateWorkspaceStateV1(raw: unknown): WorkspaceStateV1 | null {

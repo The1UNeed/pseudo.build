@@ -199,8 +199,13 @@ class CompilerRunner {
   }
 }
 
-export function getCompileCacheKey(documentId: string, filename: string, source: string): string {
-  return `${documentId}:${filename}:${hashString(source)}`;
+export function getCompileCacheKey(
+  documentId: string,
+  filename: string,
+  source: string,
+  syntaxId = "cambridge-igcse",
+): string {
+  return `${documentId}:${filename}:${syntaxId}:${hashString(source)}`;
 }
 
 export const pseudocodeCompilerRunner = new CompilerRunner();

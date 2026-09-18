@@ -10,6 +10,8 @@ export const editorEn = {
   },
   loading: { editor: "Loading editor", flowchart: "Loading flowchart", workspace: "Loading workspace…", workspaceEyebrow: "Workspace", preparing: "Preparing the editor layout and runtime panels." },
   settings: {
+    examBoard: "EXAM BOARD", syntax: "Syntax", examSyntax: "Exam syntax",
+    syntaxDescription: "Choose the pseudocode notation the compiler, highlighter, and completions should follow.",
     appearance: "APPEARANCE", theme: "Theme", themeDescription: "Choose how the compiler shell should look on this device.",
     system: "System", systemDescription: "Follow the operating system appearance automatically.",
     dark: "Dark", darkDescription: "Use the current graphite shell and dark editor palette.",

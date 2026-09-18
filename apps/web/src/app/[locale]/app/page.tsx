@@ -75,6 +75,8 @@ import {
   saveThemeMode,
   type ThemeMode,
 } from "@/lib/theme";
+import { SYNTAX_OPTIONS, resolveSyntax } from "@/lib/pseudocodeLanguages";
+import type { WorkspaceSyntaxId } from "@pseudobuild/workspace";
 
 /* ── constants ── */
 const DEFAULT_SOURCE = `DECLARE Number : INTEGER
@@ -315,6 +317,8 @@ export default function HomePage() {
     toggleFolder,
     expandFolder,
     createFolderInWorkspace,
+    syntaxId,
+    setSyntaxId,
     createDocumentInWorkspace,
     renameNodeInWorkspace,
     deleteNodesInWorkspace,
@@ -883,6 +887,47 @@ export default function HomePage() {
     paddingLeft: "env(safe-area-inset-left, 0px)",
   } as const;
 
+  const currentSyntax = resolveSyntax(syntaxId);
+
+  const handleSyntaxChange = (nextSyntaxId: WorkspaceSyntaxId) => {
+    setSyntaxId(nextSyntaxId);
+  };
+
+  const renderSyntaxSettings = (compact = false) => (
+    <div className={compact ? "mt-6 space-y-4" : "space-y-4"}>
+      <div>
+        <p className="text-[11px] font-semibold tracking-[0.18em] text-[var(--text3)]">
+          {t.settings.examBoard}
+        </p>
+        <h3 className="mt-2 text-[22px] font-semibold text-[var(--text)]">{t.settings.syntax}</h3>
+        <p className="mt-2 max-w-md text-sm leading-6 text-[var(--text2)]">
+          {t.settings.syntaxDescription}
+        </p>
+      </div>
+
+      <div className="rounded-xl border border-[var(--separator)] bg-[var(--surface2)] px-4 py-3">
+        <label className="flex items-center justify-between gap-3">
+          <span className="text-sm font-semibold text-[var(--text)]">{t.settings.examSyntax}</span>
+          <select
+            value={currentSyntax.id}
+            aria-label={t.settings.examSyntax}
+            onChange={(event) => handleSyntaxChange(event.target.value as WorkspaceSyntaxId)}
+            className="h-9 max-w-[220px] rounded-lg border border-[var(--separator)] bg-[var(--bg)] px-3 text-sm font-semibold text-[var(--text)] outline-none focus:border-[var(--accent)] cursor-pointer"
+          >
+            {SYNTAX_OPTIONS.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="mt-2 text-xs text-[var(--text3)]">
+          {currentSyntax.board} {currentSyntax.syllabus}. {currentSyntax.description}
+        </p>
+      </div>
+    </div>
+  );
+
   const renderThemeSettings = (compact = false) => (
     <div className={compact ? "mt-6 space-y-4" : "space-y-4"}>
       <div>
@@ -1061,6 +1106,7 @@ export default function HomePage() {
                 labelIcon={<Palette size={16} />}
               >
                 <div className="p-2">
+                  {renderSyntaxSettings()}
                   {renderThemeSettings()}
                 </div>
               </UserButton.UserProfilePage>
@@ -1451,6 +1497,7 @@ export default function HomePage() {
           </button>
         </div>
         <div className="mt-5 space-y-6">
+          {renderSyntaxSettings()}
           {renderThemeSettings()}
           {renderSaveSettings()}
           {renderBetaSettings()}
@@ -1869,6 +1916,7 @@ export default function HomePage() {
                           activeDocument?.id === currentDocument.id ? compileDiagnostics : EMPTY_DIAGNOSTICS
                         }
                         theme={resolvedTheme}
+                        syntaxId={syntaxId}
                       />
                     ) : (
                       renderStarterPanel(true)
@@ -1969,6 +2017,7 @@ export default function HomePage() {
                           activeDocument?.id === currentDocument.id ? compileDiagnostics : EMPTY_DIAGNOSTICS
                         }
                         theme={resolvedTheme}
+                        syntaxId={syntaxId}
                       />
                     ) : (
                       renderStarterPanel(true)
@@ -2002,6 +2051,7 @@ export default function HomePage() {
                       <p className="mt-4 max-w-xs text-sm leading-6 text-[var(--text2)]">
                         {t.settings.touchDescription}
                       </p>
+                      {renderSyntaxSettings(true)}
                       {renderThemeSettings(true)}
                       {renderSaveSettings(true)}
                       {renderBetaSettings(true)}
@@ -2211,8 +2261,8 @@ export default function HomePage() {
               >
                 <FlowchartEditor
                   source={flowchartSource}
-                  // isVisible comes from the flowchart branch; spread until both branches merge, then pass it directly.
                   isVisible={flowchartVisible}
+                  syntaxId={syntaxId}
                   onCodeChange={handleFlowchartCodeChange}
                   onGenerateCode={handleGenerateCode}
                 />
@@ -2313,6 +2363,7 @@ export default function HomePage() {
                       activeDocument?.id === editorActiveDoc.id ? compileDiagnostics : EMPTY_DIAGNOSTICS
                     }
                     theme={resolvedTheme}
+                    syntaxId={syntaxId}
                   />
                 ) : (
                   renderStarterPanel()
