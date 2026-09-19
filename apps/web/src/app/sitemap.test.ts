@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { practiceQuestions } from "@/lib/practice-questions";
 import { docs, posts } from "@/lib/seo-content";
 import sitemap from "./sitemap";
 
@@ -7,10 +8,12 @@ describe("sitemap", () => {
   const urls = entries.map((entry) => entry.url);
 
   it("lists every page once per locale", () => {
-    expect(entries).toHaveLength((9 + docs.length + posts.length) * 2);
+    expect(entries).toHaveLength((10 + docs.length + posts.length + practiceQuestions.length) * 2);
     expect(new Set(urls).size).toBe(urls.length);
     expect(urls).toContain("https://pseudo.build");
     expect(urls).toContain("https://pseudo.build/zh");
+    expect(urls).toContain("https://pseudo.build/practice");
+    expect(urls).toContain(`https://pseudo.build/practice/${practiceQuestions[0].id}`);
     expect(urls).toContain(`https://pseudo.build/docs/${docs[0].slug}`);
     expect(urls).toContain(`https://pseudo.build/zh/blog/${posts[0].slug}`);
     expect(urls.some((url) => url.includes("/en/") || url.endsWith("/en"))).toBe(false);

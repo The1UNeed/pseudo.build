@@ -241,6 +241,29 @@ OUTPUT Scores[1]`,
       },
     ],
   },
+  {
+    slug: "exam-style-practice",
+    title: "How to practise random pseudocode questions",
+    description:
+      "Use Pseudo Build's random practice questions to rehearse IGCSE, O Level, and A Level algorithm tasks in the browser editor.",
+    updated: "2026-09-19",
+    sections: [
+      {
+        heading: "Start with a random task",
+        body: [
+          "Open Practice and click Practice a random question. The page picks an original exam-style task so you cannot memorise a fixed order.",
+          "Filter by topic when you want only loops, arrays, strings, or procedures. Leave the filter on any topic for mixed Paper 2 revision.",
+        ],
+      },
+      {
+        heading: "Write it in the editor",
+        body: [
+          "Each question has a starter file. Open it in the editor, complete the algorithm, then use Run with the sample input.",
+          "Treat the sample output as a first check, then trace one edge case by hand before moving to another question.",
+        ],
+      },
+    ],
+  },
 ];
 
 export const posts: SeoPost[] = [
@@ -362,6 +385,29 @@ export const posts: SeoPost[] = [
       },
     ],
   },
+  {
+    slug: "random-pseudocode-practice",
+    title: "Why random questions beat a fixed worksheet",
+    description:
+      "A shuffled bank of original pseudocode tasks is closer to an unseen exam paper than repeating the same five examples.",
+    date: "2026-09-19",
+    readingTime: "4 min read",
+    tags: ["Practice", "IGCSE", "Revision"],
+    sections: [
+      {
+        heading: "Unseen is the point",
+        body: [
+          "Exam papers do not reuse last week's worksheet in the same order. Random practice forces you to choose a loop, a condition, or an array traversal from the problem text instead of from memory.",
+        ],
+      },
+      {
+        heading: "Keep the compiler in the loop",
+        body: [
+          "Write the answer in the editor, run it against the sample, then draw another question. The compiler catches missing ENDIF and undeclared names before you practise the same mistake on paper.",
+        ],
+      },
+    ],
+  },
 ];
 
 export type FaqItem = { question: string; answer: string };
@@ -401,6 +447,11 @@ export const faqItems: FaqItem[] = [
     question: "Is Pseudo Build really free and open source?",
     answer:
       "Yes. Pseudo Build is free to use and the source code is published under the GNU GPL v3 on GitHub. You can read it, run it yourself, and contribute.",
+  },
+  {
+    question: "Can I practise random exam-style questions?",
+    answer:
+      "Yes. The practice page draws an original IGCSE, O Level, or A Level style task at random. You can filter by topic, open a starter file in the editor, and run your answer in the browser.",
   },
 ];
 

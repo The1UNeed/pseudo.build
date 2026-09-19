@@ -37,7 +37,8 @@ export default async function DocPage({ params }: PageProps) {
   const { slug } = await params;
   const doc = getDoc(locale, slug);
   if (!doc) notFound();
-  const t = getDictionary(locale).docs;
+  const dict = getDictionary(locale);
+  const t = dict.docs;
 
   const structuredData = [
     {
@@ -94,6 +95,9 @@ export default async function DocPage({ params }: PageProps) {
         <div className="mt-12 flex flex-wrap gap-3">
           <Link href={localePath(locale, "/app")} className="site-btn site-btn-accent">
             {t.tryIt} <Play size={16} />
+          </Link>
+          <Link href={localePath(locale, "/practice")} className="site-btn site-btn-ghost">
+            {dict.nav.practice}
           </Link>
           <Link href={localePath(locale, "/manual")} className="site-btn site-btn-ghost">
             {t.openManual}

@@ -37,6 +37,7 @@ import {
   Play,
   Save,
   Settings,
+  Shuffle,
   Terminal,
   Trash2,
   X,
@@ -47,8 +48,10 @@ import {
 } from "@pseudobuild/workspace";
 import { Breadcrumbs } from "@/app/components/Breadcrumbs";
 import { Dialog } from "@/app/components/Dialog";
+import { PracticeQuestionBanner } from "@/app/components/PracticeQuestionBanner";
 import { WorkspaceSidebar } from "@/app/components/WorkspaceSidebar";
 import ManualContent from "@/app/[locale]/(public)/manual/ManualContent";
+import { usePracticeQuestion } from "@/app/hooks/usePracticeQuestion";
 import { useWorkspaceSession } from "@/app/hooks/useWorkspaceSession";
 import {
   Show,
@@ -449,6 +452,18 @@ export default function HomePage() {
     return node?.type === "document" ? node : null;
   }, [workspace, editorPanel]);
   const currentDocument = editorActiveDoc ?? activeDocument;
+  const { currentQuestion, openRandomQuestion } = usePracticeQuestion(
+    workspace,
+    currentDocument?.name,
+    createDocumentInWorkspace,
+    selectDocument,
+  );
+  const practiceBanner = currentQuestion ? (
+    <PracticeQuestionBanner
+      question={currentQuestion}
+      onAnother={() => openRandomQuestion(currentQuestion.id)}
+    />
+  ) : null;
 
   const breadcrumbs = useMemo(() => {
     if (!workspace || !currentDocument) return [];
@@ -1904,6 +1919,7 @@ export default function HomePage() {
                   <div className="flex h-8 shrink-0 items-center px-4">
                     <Breadcrumbs path={breadcrumbs} />
                   </div>
+                  {practiceBanner}
                   <div className="h-px shrink-0 bg-[var(--separator)]" />
 
                   <div className="min-h-0 flex-1">
@@ -2006,6 +2022,7 @@ export default function HomePage() {
               <div className="h-px shrink-0 bg-[var(--separator)]" />
 
               <section className="flex min-h-0 flex-1 flex-col bg-[var(--bg)]">
+                {practiceBanner}
                 <div className="min-h-0 flex-1">
                   {touchTab === "editor" ? (
                     currentDocument ? (
@@ -2142,6 +2159,14 @@ export default function HomePage() {
         {/* Toolbar */}
         <div className="app-no-drag flex items-center gap-1.5">
           {renderSaveControl()}
+          <Link
+            href={localePath(locale, "/practice")}
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text3)] transition hover:text-[var(--text2)]"
+            aria-label={t.toolbar.openPractice}
+            title={t.toolbar.practice}
+          >
+            <Shuffle size={18} />
+          </Link>
           <button
             type="button"
             className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text3)] transition hover:text-[var(--text2)]"
@@ -2348,6 +2373,7 @@ export default function HomePage() {
               <div className="flex h-7 shrink-0 items-center px-4">
                 <Breadcrumbs path={breadcrumbs} />
               </div>
+              {practiceBanner}
 
               {/* Editor Separator */}
               <div className="h-px shrink-0 bg-[var(--separator)]" />

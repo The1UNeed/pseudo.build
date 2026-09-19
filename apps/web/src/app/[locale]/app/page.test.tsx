@@ -326,6 +326,21 @@ describe("HomePage workspace flow", () => {
     });
   });
 
+  it("opens a practice starter file from the query string", async () => {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: new URL("https://pseudocode-compiler-preview.vercel.app/app?practice=pass-or-fail"),
+    });
+    mockLoadedWorkspace(createEmptyWorkspace("2026-03-15T00:00:00.000Z"));
+    render(<HomePage />);
+
+    expect(await screen.findByRole("treeitem", { name: "practice-pass-or-fail.pseudo" })).toBeInTheDocument();
+    expect((screen.getByRole("textbox", { name: "Mock editor" }) as HTMLTextAreaElement).value).toContain(
+      "DECLARE Mark : INTEGER",
+    );
+    expect(screen.getByText("Pass or fail from a mark")).toBeInTheDocument();
+  });
+
   it("opens documents and updates the editor content", async () => {
     mockLoadedWorkspace(createWorkspaceFixture());
     render(<HomePage />);
