@@ -375,18 +375,52 @@ export function getPracticeQuestion(locale: Locale, id: string): PracticeQuestio
   return getPracticeQuestions(locale).find((question) => question.id === id);
 }
 
+/** Workspace files for the bank use this prefix so `practice-notes.pseudo` stays a normal file. */
+export const practiceFilePrefix = "practice.q.";
+
 export function practiceDocumentBasename(id: string): string {
-  return `practice-${id}`;
+  return `${practiceFilePrefix}${id}`;
 }
 
 export function questionIdFromDocumentName(name: string): string | null {
   const base = name.replace(/\.pseudo$/i, "");
-  const prefix = "practice-";
-  if (!base.startsWith(prefix)) {
+  if (!base.startsWith(practiceFilePrefix)) {
     return null;
   }
-  const id = base.slice(prefix.length);
+  const id = base.slice(practiceFilePrefix.length);
   return id.length > 0 ? id : null;
+}
+
+export function filterPracticeQuestions(
+  questions: readonly PracticeQuestion[],
+  options: Pick<RandomQuestionOptions, "topic" | "difficulty" | "excludeId"> = {},
+): PracticeQuestion[] {
+  const topic = options.topic ?? "any";
+  const difficulty = options.difficulty ?? "any";
+  return questions.filter((question) => {
+    const topicOk = topic === "any" || question.topic === topic;
+    const difficultyOk = difficulty === "any" || question.difficulty === difficulty;
+    const excludeOk = !options.excludeId || question.id !== options.excludeId;
+    return topicOk && difficultyOk && excludeOk;
+  });
+}
+
+/** True when the requested filter is empty (or only the current question) so a pick uses the full bank. */
+export function practiceFilterFallsBack(
+  questions: readonly PracticeQuestion[],
+  options: RandomQuestionOptions = {},
+): boolean {
+  const matching = filterPracticeQuestions(questions, {
+    topic: options.topic,
+    difficulty: options.difficulty,
+  });
+  const withoutCurrent = options.excludeId
+    ? matching.filter((question) => question.id !== options.excludeId)
+    : matching;
+  if (withoutCurrent.length > 0) {
+    return false;
+  }
+  return filterPracticeQuestions(questions, { excludeId: options.excludeId }).length > 0;
 }
 
 export function relatedPracticeQuestions(
@@ -417,25 +451,21 @@ export function pickRandomQuestion(
   questions: readonly PracticeQuestion[],
   options: RandomQuestionOptions = {},
 ): PracticeQuestion | null {
-  const topic = options.topic ?? "any";
-  const difficulty = options.difficulty ?? "any";
   const random = options.random ?? Math.random;
-
-  let pool = questions.filter((question) => {
-    const topicOk = topic === "any" || question.topic === topic;
-    const difficultyOk = difficulty === "any" || question.difficulty === difficulty;
-    return topicOk && difficultyOk;
+  const matching = filterPracticeQuestions(questions, {
+    topic: options.topic,
+    difficulty: options.difficulty,
+    excludeId: options.excludeId,
   });
-
+  const pickFrom =
+    matching.length > 0
+      ? matching
+      : filterPracticeQuestions(questions, { excludeId: options.excludeId });
+  const lastResort = matching.length > 0 ? matching : [...questions];
+  const pool = pickFrom.length > 0 ? pickFrom : lastResort;
   if (pool.length === 0) {
-    pool = [...questions];
-  }
-
-  const withoutCurrent = options.excludeId ? pool.filter((question) => question.id !== options.excludeId) : pool;
-  const pickFrom = withoutCurrent.length > 0 ? withoutCurrent : pool;
-  if (pickFrom.length === 0) {
     return null;
   }
 
-  return pickFrom[clampIndex(random(), pickFrom.length)] ?? null;
+  return pool[clampIndex(random(), pool.length)] ?? null;
 }

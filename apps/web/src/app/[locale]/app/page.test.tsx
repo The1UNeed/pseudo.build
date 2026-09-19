@@ -334,7 +334,7 @@ describe("HomePage workspace flow", () => {
     mockLoadedWorkspace(createEmptyWorkspace("2026-03-15T00:00:00.000Z"));
     render(<HomePage />);
 
-    expect(await screen.findByRole("treeitem", { name: "practice-pass-or-fail.pseudo" })).toBeInTheDocument();
+    expect(await screen.findByRole("treeitem", { name: "practice.q.pass-or-fail.pseudo" })).toBeInTheDocument();
     expect((screen.getByRole("textbox", { name: "Mock editor" }) as HTMLTextAreaElement).value).toContain(
       "DECLARE Mark : INTEGER",
     );

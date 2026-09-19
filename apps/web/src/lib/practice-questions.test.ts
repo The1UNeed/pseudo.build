@@ -4,6 +4,7 @@ import {
   getPracticeQuestions,
   pickRandomQuestion,
   practiceDocumentBasename,
+  practiceFilterFallsBack,
   practiceQuestions,
   questionIdFromDocumentName,
   relatedPracticeQuestions,
@@ -23,9 +24,11 @@ describe("practice questions", () => {
     expect(getPracticeQuestion("en", "missing")).toBeUndefined();
   });
 
-  it("maps practice files back to question ids", () => {
-    expect(practiceDocumentBasename("pass-or-fail")).toBe("practice-pass-or-fail");
-    expect(questionIdFromDocumentName("practice-pass-or-fail.pseudo")).toBe("pass-or-fail");
+  it("maps namespaced practice files back to question ids", () => {
+    expect(practiceDocumentBasename("pass-or-fail")).toBe("practice.q.pass-or-fail");
+    expect(questionIdFromDocumentName("practice.q.pass-or-fail.pseudo")).toBe("pass-or-fail");
+    expect(questionIdFromDocumentName("practice-pass-or-fail.pseudo")).toBeNull();
+    expect(questionIdFromDocumentName("practice-notes.pseudo")).toBeNull();
     expect(questionIdFromDocumentName("main.pseudo")).toBeNull();
   });
 
@@ -58,6 +61,20 @@ describe("pickRandomQuestion", () => {
       random: () => 0,
     });
     expect(picked).not.toBeNull();
+    expect(practiceFilterFallsBack(practiceQuestions, { topic: "io", difficulty: "extended" })).toBe(true);
+  });
+
+  it("falls back to other topics when the filtered pool is only the current question", () => {
+    const picked = pickRandomQuestion(practiceQuestions, {
+      topic: "procedures",
+      excludeId: "print-heading",
+      random: () => 0,
+    });
+    expect(picked?.id).not.toBe("print-heading");
+    expect(picked?.topic).not.toBe("procedures");
+    expect(
+      practiceFilterFallsBack(practiceQuestions, { topic: "procedures", excludeId: "print-heading" }),
+    ).toBe(true);
   });
 
   it("returns the only remaining question when every other id is excluded", () => {
@@ -68,5 +85,6 @@ describe("pickRandomQuestion", () => {
         random: () => 0.99,
       })?.id,
     ).toBe(only[0]!.id);
+    expect(practiceFilterFallsBack(only, { excludeId: only[0]!.id })).toBe(false);
   });
 });

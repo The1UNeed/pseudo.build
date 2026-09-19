@@ -7,6 +7,7 @@ import { localePath, type Locale } from "@/i18n/config";
 import { getDictionary } from "@/i18n/messages";
 import {
   pickRandomQuestion,
+  practiceFilterFallsBack,
   practiceTopics,
   type PracticeQuestion,
   type PracticeTopic,
@@ -38,6 +39,8 @@ export function RandomPracticeControls({
     [t.topics],
   );
 
+  const fallsBack = practiceFilterFallsBack(questions, { topic, excludeId });
+
   const go = () => {
     const question = pickRandomQuestion(questions, { topic, excludeId });
     if (!question) {
@@ -68,6 +71,7 @@ export function RandomPracticeControls({
           );
         })}
       </div>
+      {fallsBack ? <p className="text-sm text-[var(--ink-3)]">{t.noneInTopic}</p> : null}
       <button type="button" onClick={go} className="site-btn site-btn-accent">
         {excludeId ? t.another : t.randomCta} <Shuffle size={16} />
       </button>
