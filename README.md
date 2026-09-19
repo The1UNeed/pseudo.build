@@ -9,6 +9,7 @@ Build your pseudo code project freely and creatively.</p>
 
 <p align="center">
   <a href="https://pseudo.build">pseudo.build</a> ·
+  <a href="https://pseudo.build/practice">Practice</a> ·
   <a href="https://pseudo.build/docs">Docs</a> ·
   <a href="https://pseudo.build/manual">Manual</a> ·
   <a href="SECURITY.md">Security</a> ·
@@ -34,7 +35,8 @@ WebAssembly. Signing in is optional and only enables cloud workspace sync.
 
 The site and editor ship in English (`/`) and Simplified Chinese (`/zh`). Locale routing lives in
 `apps/web/src/proxy.ts`, UI strings in `apps/web/src/i18n/messages/`, docs and blog content in
-`apps/web/src/lib/seo-content*.ts`, and legal pages in `content.en.tsx` / `content.zh.tsx` next to each page.
+`apps/web/src/lib/seo-content*.ts`, practice questions in `apps/web/src/lib/practice-questions*.ts`,
+and legal pages in `content.en.tsx` / `content.zh.tsx` next to each page.
 Every page emits `hreflang` alternates and the sitemap lists both locales.
 
 ## Getting started

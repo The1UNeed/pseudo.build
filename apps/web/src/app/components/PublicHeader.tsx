@@ -6,7 +6,7 @@ import { getDictionary } from "@/i18n/messages";
 import { LocaleSwitcher } from "@/i18n/LocaleSwitcher";
 import { githubUrl, productName } from "@/lib/seo-content";
 
-export type PublicNavKey = "docs" | "blog" | "manual" | "legal";
+export type PublicNavKey = "docs" | "practice" | "blog" | "manual" | "legal";
 
 type PublicHeaderProps = {
   locale: Locale;
@@ -17,6 +17,7 @@ export function PublicHeader({ locale, active }: PublicHeaderProps) {
   const t = getDictionary(locale).nav;
   const navItems = [
     { href: "/docs", label: t.docs, key: "docs" },
+    { href: "/practice", label: t.practice, key: "practice" },
     { href: "/manual", label: t.manual, key: "manual" },
     { href: "/blog", label: t.blog, key: "blog" },
   ] as const;

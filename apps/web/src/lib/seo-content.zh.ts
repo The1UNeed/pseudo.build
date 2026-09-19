@@ -184,6 +184,28 @@ OUTPUT Scores[1]`,
       },
     ],
   },
+  {
+    slug: "exam-style-practice",
+    title: "如何练习随机伪代码题目",
+    description: "用 Pseudo Build 的随机练习题，在浏览器编辑器里演练 IGCSE、O Level 和 A Level 算法题。",
+    updated: "2026-09-19",
+    sections: [
+      {
+        heading: "从一道随机题开始",
+        body: [
+          "打开练习页，点击“练习一道随机题”。页面会抽取一道原创的考试风格题目，这样你没法按固定顺序背答案。",
+          "只想练循环、数组、字符串或过程时，按主题筛选。混合复习试卷 2 时，把筛选留在全部主题。",
+        ],
+      },
+      {
+        heading: "在编辑器里写",
+        body: [
+          "每道题都有起始文件。在编辑器中打开它，补全算法，再用样例输入运行。",
+          "把样例输出当作第一次检查，再手算一个边界情况，然后再抽下一题。",
+        ],
+      },
+    ],
+  },
 ];
 
 export const postsZh: SeoPost[] = [
@@ -296,6 +318,28 @@ export const postsZh: SeoPost[] = [
       },
     ],
   },
+  {
+    slug: "random-pseudocode-practice",
+    title: "为什么随机题比固定练习单更有用",
+    description: "打乱顺序的原创伪代码题更接近没见过的试卷，而不是反复做同一组五个例子。",
+    date: "2026-09-19",
+    readingTime: "4 分钟阅读",
+    tags: ["练习", "IGCSE", "复习"],
+    sections: [
+      {
+        heading: "没见过才是重点",
+        body: [
+          "试卷不会按上周练习单的顺序再出一遍。随机练习逼你从题面里判断该用循环、条件还是数组遍历，而不是靠记忆。",
+        ],
+      },
+      {
+        heading: "让编译器一起参与",
+        body: [
+          "在编辑器里写答案，对着样例运行，然后再抽一题。漏掉 ENDIF 或未声明名字时，编译器会在你把同样的错误写到纸上之前拦住你。",
+        ],
+      },
+    ],
+  },
 ];
 
 export const faqZh: FaqItem[] = [
@@ -315,7 +359,8 @@ export const faqZh: FaqItem[] = [
   },
   {
     question: "这只适用于 IGCSE 计算机科学吗？",
-    answer: "语法和手册是围绕 IGCSE 风格的伪代码练习设计的，但对任何学习结构化算法的人来说，这个编辑器都很有用。",
+    answer:
+      "不是。设置里可以在剑桥 IGCSE、剑桥 AS 和 A Level、IB 文凭课程、OCR GCSE 和 AQA GCSE 记法之间切换。编译器、高亮和自动补全会跟随你选择的语法。",
   },
   {
     question: "伪代码遵循哪个考试局的规范？",
@@ -331,5 +376,10 @@ export const faqZh: FaqItem[] = [
     question: "Pseudo Build 真的免费开源吗？",
     answer:
       "是的。Pseudo Build 可以免费使用，源代码基于 GNU GPL v3 发布在 GitHub 上。你可以阅读它、自己运行它，也可以参与贡献。",
+  },
+  {
+    question: "可以练习随机的考试风格题目吗？",
+    answer:
+      "可以。练习页会随机抽取一道原创的 IGCSE、O Level 或 A Level 风格题目。你可以按主题筛选，在编辑器中打开起始文件，并在浏览器里运行你的答案。",
   },
 ];

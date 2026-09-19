@@ -11,6 +11,7 @@ import {
   Lock,
   Play,
   ScrollText,
+  Shuffle,
 } from "lucide-react";
 import { PublicHeader } from "@/app/components/PublicHeader";
 import { defaultLocale, localePath, localeTags, localeUrl, pageMetadata } from "@/i18n/config";
@@ -165,6 +166,9 @@ export default async function LandingPage({ params }: LocaleParams) {
             <Link href={href("/app")} className="site-btn site-btn-accent">
               {t.ctaStart} <Play size={16} />
             </Link>
+            <Link href={href("/practice")} className="site-btn site-btn-ghost">
+              {t.ctaPractice} <Shuffle size={16} />
+            </Link>
             <Link href={href("/docs")} className="site-btn site-btn-ghost">
               {t.ctaDocs} <ArrowRight size={16} />
             </Link>
@@ -201,6 +205,9 @@ export default async function LandingPage({ params }: LocaleParams) {
           <h2 className="site-h2 mt-3">{t.studentsTitle}</h2>
           <p className="site-lede mt-5 max-w-lg">{t.studentsLede}</p>
           <p className="mt-5 max-w-lg text-sm leading-6 text-[var(--ink-3)]">{t.teacherNote}</p>
+          <Link href={href("/practice")} className="site-btn mt-7">
+            {t.studentsPractice} <Shuffle size={16} />
+          </Link>
         </div>
         <ul className="grid gap-4">
           {t.exams.map((exam) => (

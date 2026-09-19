@@ -13,6 +13,7 @@ export function Footer({ locale }: { locale: Locale }) {
       title: t.product,
       links: [
         { href: localePath(locale, "/app"), label: t.editor },
+        { href: localePath(locale, "/practice"), label: t.practice },
         { href: localePath(locale, "/docs"), label: getDictionary(locale).nav.docs },
         { href: localePath(locale, "/manual"), label: getDictionary(locale).nav.manual },
         { href: localePath(locale, "/blog"), label: getDictionary(locale).nav.blog },

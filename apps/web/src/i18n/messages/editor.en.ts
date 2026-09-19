@@ -4,6 +4,7 @@ export const editorEn = {
   common: { cancel: "Cancel", close: "Close", delete: "Delete", dismiss: "Dismiss", beta: "Beta" },
   toolbar: {
     editor: "Editor", run: "Run", running: "Running", manual: "Manual", openManual: "Open Manual",
+    practice: "Practice", openPractice: "Practice a random question",
     settings: "Settings", openSettings: "Open settings", hideSidebar: "Hide sidebar", showSidebar: "Show sidebar",
     openFiles: "Open files", backToEditor: "Back to editor", switchToCode: "Switch to code view",
     switchToFlowchart: "Switch to flowchart view", home: "Pseudo Build home",

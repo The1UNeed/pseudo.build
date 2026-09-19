@@ -66,6 +66,9 @@ export default async function ManualPage({ params }: LocaleParams) {
           <Link href={localePath(locale, "/app")} className="site-btn site-btn-accent">
             {t.openEditor} <Play size={16} />
           </Link>
+          <Link href={localePath(locale, "/practice")} className="site-btn site-btn-ghost">
+            {dict.nav.practice} <ArrowRight size={16} />
+          </Link>
           <Link href={localePath(locale, "/docs")} className="site-btn site-btn-ghost">
             {t.browseDocs} <ArrowRight size={16} />
           </Link>
